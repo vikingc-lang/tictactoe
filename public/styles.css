@@ -144,6 +144,29 @@ main { max-width: 1080px; margin: 0 auto; padding: 0 18px; }
   border-radius: 8px; padding: 7px 10px;
 }
 
+/* Flight filters */
+.filters {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 16px; margin-bottom: 14px; font-size: 0.85rem; color: var(--muted);
+}
+.filters label { display: flex; align-items: center; gap: 8px; }
+.filters select {
+  background: var(--bg); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 10px;
+}
+.filters .chk { cursor: pointer; }
+.filters input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
+.filter-count { margin-left: auto; font-size: 0.78rem; }
+.no-match {
+  text-align: center; color: var(--muted); padding: 40px 16px;
+  border: 1px dashed var(--line); border-radius: 12px;
+}
+.no-match button {
+  background: none; border: none; color: var(--accent-2); cursor: pointer;
+  text-decoration: underline; font-size: inherit;
+}
+
 /* Item cards */
 .list { display: flex; flex-direction: column; gap: 12px; }
 .item {
@@ -164,6 +187,9 @@ main { max-width: 1080px; margin: 0 auto; padding: 0 18px; }
 .badge.best-value { background: #203a75; color: #9db8ff; }
 .badge.top-quality { background: #533d14; color: var(--accent); }
 .badge.live { background: #4d1d3a; color: #ff9dd2; }
+.badge.type-low-cost { background: #14401f; color: #7be495; }
+.badge.type-full-service { background: #1d2c58; color: #8fa8f0; }
+.badge.type-premium { background: #4a3410; color: #ffd27d; }
 .item-score { text-align: right; }
 .score-bar { width: 90px; height: 6px; background: var(--bg); border-radius: 4px; overflow: hidden; margin-top: 4px; }
 .score-fill { height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--good)); }

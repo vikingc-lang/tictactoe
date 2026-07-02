@@ -88,6 +88,26 @@
         </div>
       </div>
 
+      <div class="filters" id="flightFilters">
+        <label>Stops
+          <select id="stopsFilter">
+            <option value="any">Any</option>
+            <option value="0">Nonstop only</option>
+            <option value="1">Up to 1 stop</option>
+          </select>
+        </label>
+        <label>Airline type
+          <select id="typeFilter">
+            <option value="all">All types</option>
+            <option value="low-cost">💸 Low-cost</option>
+            <option value="full-service">🛫 Full-service</option>
+            <option value="premium">✨ Premium</option>
+          </select>
+        </label>
+        <label class="chk"><input type="checkbox" id="bagFilter" /> 🧳 Checked bag included</label>
+        <span class="filter-count" id="filterCount"></span>
+      </div>
+
       <div class="list" id="itemList"></div>
     </section>
 

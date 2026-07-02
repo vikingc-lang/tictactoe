@@ -27,6 +27,8 @@ car — a sticky trip bar keeps a running total.
 
 - 🌍 **120+ major airports worldwide** with typeahead search — domestic and international routes
 - ✈️🏨🚗 Ranked options for flights, hotels and rental cars with **Cheapest / Best value / Top quality** badges and a 0–100 value score on every option
+- 💸 **All airline types**: 60+ carriers classified as *low-cost*, *full-service* or *premium* — budget airlines (Ryanair, Wizz Air, IndiGo, AirAsia, Spirit, Scoot, flydubai…) price lower but rarely include bags or refunds, and only long-haul-capable LCCs appear on long routes
+- 🛬 **Stops & layovers**: every itinerary shows its connection count and realistic layover hubs ("1 stop via IST"), with **filters for stops (nonstop / ≤1), airline type and checked-bag inclusion**
 - 📡 **Live internet data**:
   - Real-time currency conversion (20+ currencies) via [open.er-api.com](https://www.exchangerate-api.com) — no API key needed, refreshed hourly, "LIVE rates" indicator in the header
   - Optional **live flight offers via Amadeus** (see below)

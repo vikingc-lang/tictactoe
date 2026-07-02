@@ -5,7 +5,7 @@
 // hub size and local cost of living. Used standalone or as the fallback when no
 // live provider (Amadeus) is configured.
 
-const { findAirport } = require('../data/airports');
+const { AIRPORTS, findAirport } = require('../data/airports');
 
 // ---------- seeded randomness ----------
 
@@ -80,50 +80,82 @@ function isWeekend(dateISO) {
 }
 
 // ---------- airline pools ----------
+// Entries: [name, IATA code, quality 0-10, type]. Types: 'low-cost' (budget
+// carriers — cheaper fares, bags/refunds rarely included), 'full-service'
+// (legacy carriers) and 'premium' (top-rated international flag carriers).
 
 const AIRLINES = {
   NA: [
-    ['Delta Air Lines', 'DL', 8.1], ['United Airlines', 'UA', 7.6], ['American Airlines', 'AA', 7.4],
-    ['Air Canada', 'AC', 7.5], ['JetBlue', 'B6', 7.8], ['Alaska Airlines', 'AS', 8.0],
-    ['Southwest', 'WN', 7.7], ['WestJet', 'WS', 7.3], ['Aeromexico', 'AM', 7.2]
+    ['Delta Air Lines', 'DL', 8.1, 'full-service'], ['United Airlines', 'UA', 7.6, 'full-service'],
+    ['American Airlines', 'AA', 7.4, 'full-service'], ['Air Canada', 'AC', 7.5, 'full-service'],
+    ['Alaska Airlines', 'AS', 8.0, 'full-service'], ['Aeromexico', 'AM', 7.2, 'full-service'],
+    ['JetBlue', 'B6', 7.8, 'low-cost'], ['Southwest', 'WN', 7.7, 'low-cost'],
+    ['WestJet', 'WS', 7.3, 'low-cost'], ['Spirit Airlines', 'NK', 6.0, 'low-cost'],
+    ['Frontier Airlines', 'F9', 6.1, 'low-cost'], ['Volaris', 'Y4', 6.3, 'low-cost']
   ],
   EU: [
-    ['Lufthansa', 'LH', 7.9], ['Air France', 'AF', 7.8], ['KLM', 'KL', 8.0],
-    ['British Airways', 'BA', 7.6], ['Iberia', 'IB', 7.3], ['SWISS', 'LX', 8.2],
-    ['Turkish Airlines', 'TK', 8.0], ['Ryanair', 'FR', 6.4], ['easyJet', 'U2', 6.8],
-    ['Vueling', 'VY', 6.6], ['SAS', 'SK', 7.4], ['LOT Polish', 'LO', 7.2]
+    ['Lufthansa', 'LH', 7.9, 'full-service'], ['Air France', 'AF', 7.8, 'full-service'],
+    ['KLM', 'KL', 8.0, 'full-service'], ['British Airways', 'BA', 7.6, 'full-service'],
+    ['Iberia', 'IB', 7.3, 'full-service'], ['SWISS', 'LX', 8.2, 'full-service'],
+    ['Turkish Airlines', 'TK', 8.0, 'full-service'], ['SAS', 'SK', 7.4, 'full-service'],
+    ['LOT Polish', 'LO', 7.2, 'full-service'],
+    ['Ryanair', 'FR', 6.4, 'low-cost'], ['easyJet', 'U2', 6.8, 'low-cost'],
+    ['Vueling', 'VY', 6.6, 'low-cost'], ['Wizz Air', 'W6', 6.3, 'low-cost'],
+    ['Norwegian', 'DY', 6.9, 'low-cost'], ['Eurowings', 'EW', 6.7, 'low-cost'],
+    ['Transavia', 'HV', 6.8, 'low-cost'], ['Pegasus', 'PC', 6.5, 'low-cost']
   ],
   ME: [
-    ['Emirates', 'EK', 8.7], ['Qatar Airways', 'QR', 8.8], ['Etihad Airways', 'EY', 8.4],
-    ['Saudia', 'SV', 7.4], ['Royal Jordanian', 'RJ', 7.2], ['EL AL', 'LY', 7.3], ['flydubai', 'FZ', 7.0]
+    ['Emirates', 'EK', 8.7, 'premium'], ['Qatar Airways', 'QR', 8.8, 'premium'],
+    ['Etihad Airways', 'EY', 8.4, 'premium'], ['Saudia', 'SV', 7.4, 'full-service'],
+    ['Royal Jordanian', 'RJ', 7.2, 'full-service'], ['EL AL', 'LY', 7.3, 'full-service'],
+    ['flydubai', 'FZ', 7.0, 'low-cost'], ['Air Arabia', 'G9', 6.6, 'low-cost'],
+    ['flynas', 'XY', 6.7, 'low-cost']
   ],
   SAS: [
-    ['IndiGo', '6E', 7.5], ['Air India', 'AI', 7.0], ['Vistara', 'UK', 8.1],
-    ['SpiceJet', 'SG', 6.6], ['SriLankan', 'UL', 7.3], ['Akasa Air', 'QP', 7.4]
+    ['Air India', 'AI', 7.0, 'full-service'], ['Vistara', 'UK', 8.1, 'full-service'],
+    ['SriLankan', 'UL', 7.3, 'full-service'],
+    ['IndiGo', '6E', 7.5, 'low-cost'], ['SpiceJet', 'SG', 6.6, 'low-cost'],
+    ['Akasa Air', 'QP', 7.4, 'low-cost'], ['Air India Express', 'IX', 6.8, 'low-cost']
   ],
   EAS: [
-    ['Singapore Airlines', 'SQ', 9.0], ['ANA', 'NH', 8.8], ['Japan Airlines', 'JL', 8.6],
-    ['Cathay Pacific', 'CX', 8.4], ['Korean Air', 'KE', 8.3], ['EVA Air', 'BR', 8.5],
-    ['Thai Airways', 'TG', 7.9], ['Malaysia Airlines', 'MH', 7.6], ['VietJet Air', 'VJ', 6.5],
-    ['AirAsia', 'AK', 6.7], ['Scoot', 'TR', 6.9], ['China Eastern', 'MU', 7.0]
+    ['Singapore Airlines', 'SQ', 9.0, 'premium'], ['ANA', 'NH', 8.8, 'premium'],
+    ['Japan Airlines', 'JL', 8.6, 'premium'], ['Cathay Pacific', 'CX', 8.4, 'premium'],
+    ['EVA Air', 'BR', 8.5, 'premium'], ['Korean Air', 'KE', 8.3, 'full-service'],
+    ['Thai Airways', 'TG', 7.9, 'full-service'], ['Malaysia Airlines', 'MH', 7.6, 'full-service'],
+    ['China Eastern', 'MU', 7.0, 'full-service'],
+    ['VietJet Air', 'VJ', 6.5, 'low-cost'], ['AirAsia', 'AK', 6.7, 'low-cost'],
+    ['Scoot', 'TR', 6.9, 'low-cost'], ['Cebu Pacific', '5J', 6.5, 'low-cost'],
+    ['Peach', 'MM', 6.8, 'low-cost'], ['ZIPAIR', 'ZG', 7.0, 'low-cost']
   ],
   OC: [
-    ['Qantas', 'QF', 8.3], ['Air New Zealand', 'NZ', 8.5], ['Virgin Australia', 'VA', 7.7],
-    ['Jetstar', 'JQ', 6.7], ['Fiji Airways', 'FJ', 7.5]
+    ['Qantas', 'QF', 8.3, 'full-service'], ['Air New Zealand', 'NZ', 8.5, 'premium'],
+    ['Virgin Australia', 'VA', 7.7, 'full-service'], ['Fiji Airways', 'FJ', 7.5, 'full-service'],
+    ['Jetstar', 'JQ', 6.7, 'low-cost']
   ],
   SAM: [
-    ['LATAM', 'LA', 7.6], ['Avianca', 'AV', 7.3], ['GOL', 'G3', 7.0], ['Azul', 'AD', 7.6], ['Copa Airlines', 'CM', 7.7]
+    ['LATAM', 'LA', 7.6, 'full-service'], ['Avianca', 'AV', 7.3, 'full-service'],
+    ['Azul', 'AD', 7.6, 'full-service'], ['Copa Airlines', 'CM', 7.7, 'full-service'],
+    ['GOL', 'G3', 7.0, 'low-cost'], ['Sky Airline', 'H2', 6.4, 'low-cost'],
+    ['Flybondi', 'FO', 6.0, 'low-cost']
   ],
   AF: [
-    ['Ethiopian Airlines', 'ET', 7.7], ['Kenya Airways', 'KQ', 7.2], ['EgyptAir', 'MS', 7.0],
-    ['Royal Air Maroc', 'AT', 7.1], ['Airlink', '4Z', 7.3], ['Air Mauritius', 'MK', 7.5]
+    ['Ethiopian Airlines', 'ET', 7.7, 'full-service'], ['Kenya Airways', 'KQ', 7.2, 'full-service'],
+    ['EgyptAir', 'MS', 7.0, 'full-service'], ['Royal Air Maroc', 'AT', 7.1, 'full-service'],
+    ['Airlink', '4Z', 7.3, 'full-service'], ['Air Mauritius', 'MK', 7.5, 'full-service'],
+    ['FlySafair', 'FA', 7.0, 'low-cost']
   ]
 };
 
 const GLOBAL_CONNECTORS = [
-  ['Emirates', 'EK', 8.7], ['Qatar Airways', 'QR', 8.8], ['Turkish Airlines', 'TK', 8.0],
-  ['Lufthansa', 'LH', 7.9], ['Singapore Airlines', 'SQ', 9.0], ['British Airways', 'BA', 7.6]
+  ['Emirates', 'EK', 8.7, 'premium'], ['Qatar Airways', 'QR', 8.8, 'premium'],
+  ['Turkish Airlines', 'TK', 8.0, 'full-service'], ['Lufthansa', 'LH', 7.9, 'full-service'],
+  ['Singapore Airlines', 'SQ', 9.0, 'premium'], ['British Airways', 'BA', 7.6, 'full-service']
 ];
+
+// Fare behavior by airline type.
+const TYPE_PRICE_MULT = { 'low-cost': 0.78, 'full-service': 1.0, premium: 1.1 };
+const TYPE_BAG_PROB = { 'low-cost': 0.12, 'full-service': 0.6, premium: 0.9 };
+const TYPE_REFUND_PROB = { 'low-cost': 0.08, 'full-service': 0.35, premium: 0.5 };
 
 function airlinePool(from, to) {
   const pool = [...(AIRLINES[from.region] || []), ...(AIRLINES[to.region] || [])];
@@ -144,12 +176,32 @@ function flightLegPriceUSD(km, from, to) {
   return (38 + km * perKm) * hubDiscount;
 }
 
+// Plausible connection hubs for a route: big airports that don't force a
+// silly detour, ranked by how little they add to the great-circle distance.
+function layoverHubs(from, to) {
+  const direct = haversineKm(from, to);
+  return AIRPORTS
+    .filter(a => a.tier <= 2 && a.city !== from.city && a.city !== to.city)
+    .map(a => ({ a, detour: (haversineKm(from, a) + haversineKm(a, to)) / direct }))
+    .filter(h => h.detour < 1.45)
+    // Rank by detour, but favor mega-hubs — connections happen at big airports.
+    .sort((x, y) => (x.detour + (x.a.tier - 1) * 0.12) - (y.detour + (y.a.tier - 1) * 0.12))
+    .slice(0, 8)
+    .map(h => h.a.iata);
+}
+
 function buildFlights({ from, to, departDate, returnDate, adults, cabin, searchDate }) {
   const km = haversineKm(from, to);
   const roundTrip = Boolean(returnDate);
   const seed = hashString(`${from.iata}-${to.iata}-${departDate}-${returnDate || 'ow'}-${cabin}`);
   const rng = mulberry32(seed);
-  const pool = airlinePool(from, to);
+  // Budget carriers are mostly short/medium-haul; only a handful of hybrid
+  // LCCs operate long-haul routes.
+  const LONG_HAUL_LCC = new Set(['DY', 'TR', 'ZG', 'JQ', 'FZ', '5J', 'AK', 'IX']);
+  const pool = airlinePool(from, to).filter(([, code, , t]) =>
+    t !== 'low-cost' || km < 4500 || (km < 9500 && LONG_HAUL_LCC.has(code)));
+  const lccPool = pool.filter(([, , , t]) => t === 'low-cost');
+  const hubs = layoverHubs(from, to);
   const cabinMult = CABIN_MULT[cabin] || 1;
 
   let base = flightLegPriceUSD(km, from, to) * leadTimeFactor(searchDate, departDate);
@@ -162,33 +214,58 @@ function buildFlights({ from, to, departDate, returnDate, adults, cabin, searchD
   base *= cabinMult;
 
   const nonstopMinutes = Math.round((km / 830) * 60 + 40);
-  const count = 9;
+  const count = 12;
   const flights = [];
 
   for (let i = 0; i < count; i++) {
-    const [airline, code, quality] = pool[Math.floor(rng() * pool.length)];
+    // Guarantee a spread: the first few offers are low-cost carriers (LCCs
+    // mostly fly short/medium haul, so only within ~7000 km), and a couple of
+    // slots are forced nonstop so every route shows the full range.
+    const useLcc = i < 3 && lccPool.length && km < 7000;
+    const [airline, code, quality, airlineType] = useLcc
+      ? lccPool[Math.floor(rng() * lccPool.length)]
+      : pool[Math.floor(rng() * pool.length)];
+
     const canNonstop = km < 13500;
-    const stops = canNonstop && rng() < (km < 3500 ? 0.62 : 0.38) ? 0 : rng() < 0.85 ? 1 : 2;
+    let stops;
+    if (canNonstop && (i === 3 || i === 4)) stops = 0;
+    else if (canNonstop && rng() < (km < 3500 ? 0.62 : 0.38)) stops = 0;
+    else stops = rng() < 0.85 ? 1 : 2;
+
+    // Pick real-looking connection points for one/two-stop itineraries.
+    const via = [];
+    if (stops > 0 && hubs.length) {
+      const first = hubs[Math.floor(rng() * hubs.length)];
+      via.push(first);
+      if (stops > 1) {
+        const rest = hubs.filter(h => h !== first);
+        if (rest.length) via.push(rest[Math.floor(rng() * rest.length)]);
+      }
+    }
+
     const layover = stops === 0 ? 0 : stops * Math.round(70 + rng() * 150);
     const durationMin = nonstopMinutes + layover + (stops > 0 ? Math.round(km * 0.004) : 0);
 
-    // Nonstops and better airlines command a premium; red-eyes go cheaper.
+    // Nonstops, better airlines and full-service fares command a premium;
+    // LCCs and red-eyes go cheaper.
     const departMin = Math.round((300 + rng() * 1080) / 5) * 5;
     const redEye = departMin >= 1260 || departMin <= 330;
     let price = base * (0.82 + rng() * 0.42);
     if (stops === 0) price *= 1.16;
     if (stops === 2) price *= 0.86;
     price *= 0.94 + (quality - 6.4) * 0.045;
+    price *= TYPE_PRICE_MULT[airlineType] || 1;
     if (redEye) price *= 0.93;
 
     const clocks = addMinutes(departDate, departMin, durationMin);
-    const refundable = rng() < 0.3;
-    const checkedBag = rng() < (quality > 7 ? 0.75 : 0.35);
+    const refundable = rng() < (TYPE_REFUND_PROB[airlineType] || 0.3);
+    const checkedBag = rng() < (TYPE_BAG_PROB[airlineType] || 0.5);
 
     flights.push({
       id: `FL-${seed.toString(36)}-${i}`,
       type: 'flight',
       airline,
+      airlineType,
       flightNumber: `${code}${100 + Math.floor(rng() * 4800)}`,
       from: from.iata,
       to: to.iata,
@@ -204,6 +281,7 @@ function buildFlights({ from, to, departDate, returnDate, adults, cabin, searchD
       duration: minutesToHhMm(durationMin),
       distanceKm: km,
       stops,
+      via,
       cabin,
       airlineRating: quality,
       refundable,

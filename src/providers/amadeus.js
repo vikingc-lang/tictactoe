@@ -42,6 +42,20 @@ async function apiGet(path, params) {
   return res.json();
 }
 
+// Known low-cost carrier codes, for airline-type filtering of live offers.
+const LCC_CODES = new Set([
+  'FR', 'U2', 'VY', 'W6', 'DY', 'EW', 'HV', 'PC', 'NK', 'F9', 'WN', 'B6', 'WS', 'Y4', 'G4',
+  '6E', 'SG', 'QP', 'IX', 'AK', 'D7', 'TR', 'VJ', '5J', 'MM', 'ZG', 'JQ', 'TT', 'FZ', 'G9',
+  'XY', 'G3', 'H2', 'FO', 'FA'
+]);
+const PREMIUM_CODES = new Set(['SQ', 'QR', 'EK', 'NH', 'JL', 'CX', 'BR', 'EY', 'NZ']);
+
+function carrierType(code) {
+  if (LCC_CODES.has(code)) return 'low-cost';
+  if (PREMIUM_CODES.has(code)) return 'premium';
+  return 'full-service';
+}
+
 function isoDurationToMin(dur) {
   const m = /PT(?:(\d+)H)?(?:(\d+)M)?/.exec(dur || '');
   return m ? (Number(m[1] || 0) * 60 + Number(m[2] || 0)) : 0;
@@ -76,6 +90,8 @@ async function searchFlights({ from, to, departDate, returnDate, adults, cabin }
       type: 'flight',
       live: true,
       airline: carriers[carrierCode] || carrierCode,
+      airlineType: carrierType(carrierCode),
+      via: segs.slice(0, -1).map(s => s.arrival.iataCode),
       flightNumber: `${carrierCode}${first.number}`,
       from: from.iata,
       to: to.iata,

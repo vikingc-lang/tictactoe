@@ -8,6 +8,7 @@ const state = {
   sort: 'price',
   selected: { flight: null, hotel: null, car: null },
   selectedBundle: null,
+  filters: { stops: 'any', type: 'all', bag: false },
   fromAirport: null,
   toAirport: null
 };
@@ -44,6 +45,10 @@ const state = {
       renderList();
     })
   );
+  $('stopsFilter').addEventListener('change', e => { state.filters.stops = e.target.value; renderList(); });
+  $('typeFilter').addEventListener('change', e => { state.filters.type = e.target.value; renderList(); });
+  $('bagFilter').addEventListener('change', e => { state.filters.bag = e.target.checked; renderList(); });
+
   $('bookBtn').addEventListener('click', openBookingModal);
   $('modalClose').addEventListener('click', () => ($('modalBackdrop').hidden = true));
   $('modalBackdrop').addEventListener('click', e => {
@@ -132,6 +137,10 @@ async function runSearch() {
   $('loader').hidden = false;
   state.selected = { flight: null, hotel: null, car: null };
   state.selectedBundle = null;
+  state.filters = { stops: 'any', type: 'all', bag: false };
+  $('stopsFilter').value = 'any';
+  $('typeFilter').value = 'all';
+  $('bagFilter').checked = false;
 
   try {
     const res = await fetch(`/api/search?${params}`);
@@ -224,7 +233,13 @@ function selectBundle(key) {
 }
 
 function currentItems() {
-  const items = [...state.data[state.tab]];
+  let items = [...state.data[state.tab]];
+  if (state.tab === 'flights') {
+    const f = state.filters;
+    if (f.stops !== 'any') items = items.filter(x => x.stops <= Number(f.stops));
+    if (f.type !== 'all') items = items.filter(x => x.airlineType === f.type);
+    if (f.bag) items = items.filter(x => x.checkedBag);
+  }
   if (state.sort === 'price') items.sort((a, b) => a.priceUSD - b.priceUSD);
   if (state.sort === 'value') items.sort((a, b) => b.valueScore - a.valueScore);
   if (state.sort === 'quality') items.sort((a, b) => b.qualityScore - a.qualityScore);
@@ -233,8 +248,32 @@ function currentItems() {
 
 const TYPE_KEY = { flight: 'flight', hotel: 'hotel', car: 'car' };
 
+function resetFilters() {
+  state.filters = { stops: 'any', type: 'all', bag: false };
+  $('stopsFilter').value = 'any';
+  $('typeFilter').value = 'all';
+  $('bagFilter').checked = false;
+  renderList();
+}
+
 function renderList() {
   const items = currentItems();
+
+  const onFlights = state.tab === 'flights';
+  $('flightFilters').style.display = onFlights ? 'flex' : 'none';
+  if (onFlights) {
+    const total = state.data.flights.length;
+    $('filterCount').textContent = items.length === total
+      ? `${total} flights` : `showing ${items.length} of ${total} flights`;
+  }
+
+  if (!items.length) {
+    $('itemList').innerHTML =
+      '<div class="no-match">No flights match these filters. <button type="button" id="resetFiltersBtn">Reset filters</button></div>';
+    $('resetFiltersBtn').addEventListener('click', resetFilters);
+    return;
+  }
+
   $('itemList').innerHTML = items.map(item => {
     const selected = state.selected[TYPE_KEY[item.type]] === item.id;
     return `
@@ -260,9 +299,12 @@ function renderList() {
   );
 }
 
+const TYPE_LABEL = { 'low-cost': '💸 low-cost', 'full-service': '🛫 full-service', premium: '✨ premium' };
+
 function badgeHtml(item) {
   let html = (item.badges || [])
     .map(b => `<span class="badge ${b}">${b.replace('-', ' ')}</span>`).join('');
+  if (item.airlineType) html += `<span class="badge type-${item.airlineType}">${TYPE_LABEL[item.airlineType]}</span>`;
   if (item.live) html += '<span class="badge live">live offer</span>';
   return html;
 }
@@ -275,7 +317,9 @@ function itemTitle(item) {
 
 function itemSub(item) {
   if (item.type === 'flight') {
-    const stops = item.stops === 0 ? 'Nonstop' : `${item.stops} stop${item.stops > 1 ? 's' : ''}`;
+    const stops = item.stops === 0
+      ? 'Nonstop'
+      : `${item.stops} stop${item.stops > 1 ? 's' : ''}${item.via && item.via.length ? ' via ' + item.via.join(', ') : ''}`;
     const extras = [
       item.roundTrip ? 'round trip' : 'one way',
       item.refundable ? 'refundable' : null,
