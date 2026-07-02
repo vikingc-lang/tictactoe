@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FareForge — cheapest & best flights, hotels and cars</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">✈️</span>
+      <span class="brand-name">Fare<em>Forge</em></span>
+      <span class="brand-sub">one search · three deals · zero regrets</span>
+    </div>
+    <div class="live-pill" id="livePill" title="Currency rates status">
+      <span class="dot"></span><span id="livePillText">connecting…</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- Search panel -->
+    <section class="search-card" id="searchCard">
+      <div class="search-grid">
+        <div class="field field-loc">
+          <label for="fromInput">From</label>
+          <input id="fromInput" placeholder="City or airport (e.g. New York)" autocomplete="off" />
+          <div class="suggest" id="fromSuggest"></div>
+        </div>
+        <button class="swap-btn" id="swapBtn" title="Swap origin and destination" type="button">⇄</button>
+        <div class="field field-loc">
+          <label for="toInput">To</label>
+          <input id="toInput" placeholder="City or airport (e.g. Paris)" autocomplete="off" />
+          <div class="suggest" id="toSuggest"></div>
+        </div>
+        <div class="field">
+          <label for="departInput">Depart</label>
+          <input id="departInput" type="date" />
+        </div>
+        <div class="field">
+          <label for="returnInput">Return</label>
+          <input id="returnInput" type="date" />
+        </div>
+        <div class="field field-small">
+          <label for="adultsInput">Travelers</label>
+          <select id="adultsInput">
+            <option>1</option><option selected>2</option><option>3</option>
+            <option>4</option><option>5</option><option>6</option>
+          </select>
+        </div>
+        <div class="field field-small">
+          <label for="cabinInput">Cabin</label>
+          <select id="cabinInput">
+            <option value="economy" selected>Economy</option>
+            <option value="premium_economy">Premium Economy</option>
+            <option value="business">Business</option>
+            <option value="first">First</option>
+          </select>
+        </div>
+        <div class="field field-small">
+          <label for="currencyInput">Currency</label>
+          <select id="currencyInput"></select>
+        </div>
+        <button class="search-btn" id="searchBtn" type="button">Forge my fares</button>
+      </div>
+      <div class="search-error" id="searchError" hidden></div>
+    </section>
+
+    <!-- Results -->
+    <section id="results" hidden>
+      <div class="route-summary" id="routeSummary"></div>
+
+      <h2 class="section-title">🎁 Trip Bundles <span class="section-hint">— we combined flight + hotel + car for you. Tap one to auto-select everything.</span></h2>
+      <div class="bundles" id="bundles"></div>
+
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-tab="flights">✈️ Flights <span class="count" id="flightCount"></span></button>
+        <button class="tab" data-tab="hotels">🏨 Hotels <span class="count" id="hotelCount"></span></button>
+        <button class="tab" data-tab="cars">🚗 Cars <span class="count" id="carCount"></span></button>
+        <div class="sort-box">
+          <label for="sortSelect">Sort</label>
+          <select id="sortSelect">
+            <option value="price">Cheapest first</option>
+            <option value="value">Best value first</option>
+            <option value="quality">Top quality first</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="list" id="itemList"></div>
+    </section>
+
+    <div class="loader" id="loader" hidden>
+      <div class="plane">✈️</div>
+      <p>Scanning the skies, streets and suites…</p>
+    </div>
+  </main>
+
+  <!-- Sticky trip bar -->
+  <div class="tripbar" id="tripbar" hidden>
+    <div class="tripbar-items" id="tripbarItems"></div>
+    <div class="tripbar-total">
+      <span class="tb-label">Trip total</span>
+      <span class="tb-amount" id="tripTotal">—</span>
+    </div>
+    <button class="book-btn" id="bookBtn" type="button">Book my trip →</button>
+  </div>
+
+  <!-- Booking modal -->
+  <div class="modal-backdrop" id="modalBackdrop" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h3>🧳 Ready for takeoff</h3>
+        <button class="modal-close" id="modalClose" type="button">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <p class="modal-note">FareForge compares fares and hands you off to trusted booking partners with your search prefilled — complete your purchase securely on their site.</p>
+    </div>
+  </div>
+
+  <footer>
+    <p>FareForge · fares refresh with live currency rates · flight/hotel/car estimates by the smart fare engine<span id="liveSourceNote"></span></p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
