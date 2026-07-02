@@ -42,6 +42,12 @@ npm start
 # open http://localhost:3000
 ```
 
+### Zero-install option
+
+Just open **`fareforge.html`** in any browser — it's the whole app in one self-contained file
+(engine, data and UI inlined; live currency rates fetched directly from the browser). Generated
+from the same source modules, minus the optional Amadeus server-side integration.
+
 ## Enable live flight offers (optional, free)
 
 1. Create a free account at [developers.amadeus.com](https://developers.amadeus.com) and create an app to get API keys.
