@@ -26,3 +26,6 @@ brain = "secondbrain.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["secondbrain*"]
+
+[tool.setuptools.package-data]
+secondbrain = ["ui/*.html"]

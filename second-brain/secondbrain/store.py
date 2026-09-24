@@ -115,7 +115,7 @@ def _row_to_doc(row: sqlite3.Row) -> Document:
 class Store:
     def __init__(self, path: Path | str):
         self.path = str(path)
-        self.db = sqlite3.connect(self.path, check_same_thread=False)
+        self.db = sqlite3.connect(self.path, check_same_thread=False, timeout=60)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)

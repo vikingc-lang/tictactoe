@@ -8,6 +8,7 @@ String values may reference environment variables as ``${NAME}`` so secrets
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import tomllib
@@ -72,6 +73,39 @@ def find_config_path(explicit: str | None = None) -> Path | None:
     return None
 
 
+SECRETS_FILE = "secrets.env"
+
+
+def load_secrets(data_dir: Path) -> None:
+    """Load KEY=VALUE lines from ``<data_dir>/secrets.env`` into the environment (without overriding)."""
+    path = data_dir / SECRETS_FILE
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if "=" in line and not line.lstrip().startswith("#"):
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+def save_secret(data_dir: Path, key: str, value: str) -> None:
+    """Store a secret in ``<data_dir>/secrets.env`` (owner-only permissions) and apply it now."""
+    path = data_dir / SECRETS_FILE
+    entries: dict[str, str] = {}
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if "=" in line:
+                k, _, v = line.partition("=")
+                entries[k.strip()] = v.strip()
+    entries[key] = value
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(f"{k}={v}\n" for k, v in entries.items()), encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    os.environ[key] = value
+
+
 def load_config(explicit: str | None = None) -> BrainConfig:
     path = find_config_path(explicit)
     if path is None:
@@ -98,19 +132,40 @@ def load_config(explicit: str | None = None) -> BrainConfig:
             cfg.sources.append(SourceConfig(name=s.pop("name"), type=s.pop("type"), options=s))
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
     cfg.output_dir.mkdir(parents=True, exist_ok=True)
+    load_secrets(cfg.data_dir)
     return cfg
 
 
 def append_source(config_file: Path, name: str, type_: str, **options: Any) -> None:
     """Append a ``[[sources]]`` block to the config file (creating it if needed)."""
-    lines = ["", "[[sources]]", f'name = "{name}"', f'type = "{type_}"']
+    # json.dumps yields valid TOML strings, including escaped Windows backslashes.
+    lines = ["", "[[sources]]", f"name = {json.dumps(name)}", f"type = {json.dumps(type_)}"]
     for key, val in options.items():
-        if isinstance(val, list):
-            lines.append(f"{key} = [" + ", ".join(f'"{v}"' for v in val) + "]")
-        elif isinstance(val, bool):
+        if isinstance(val, bool):
             lines.append(f"{key} = {'true' if val else 'false'}")
         else:
-            lines.append(f'{key} = "{val}"')
+            lines.append(f"{key} = {json.dumps(val)}")
     config_file.parent.mkdir(parents=True, exist_ok=True)
     with open(config_file, "a", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
+
+
+def remove_source(config_file: Path, name: str) -> bool:
+    """Delete the ``[[sources]]`` block with this name. Returns True if one was removed."""
+    lines = config_file.read_text(encoding="utf-8").splitlines(keepends=True)
+    blocks: list[list[str]] = [[]]
+    for line in lines:
+        if line.strip().startswith("["):
+            blocks.append([])
+        blocks[-1].append(line)
+    kept, removed = [], False
+    for block in blocks:
+        text = "".join(block)
+        if text.lstrip().startswith("[[sources]]") and re.search(
+                r'^\s*name\s*=\s*"' + re.escape(json.dumps(name)[1:-1]) + r'"\s*$', text, re.M):
+            removed = True
+            continue
+        kept.append(text)
+    if removed:
+        config_file.write_text("".join(kept), encoding="utf-8")
+    return removed

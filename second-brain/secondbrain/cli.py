@@ -137,6 +137,12 @@ def cmd_api(args) -> None:
     main(args.host, args.port)
 
 
+def cmd_ui(args) -> None:
+    from .api import main
+
+    main(args.host, args.port, open_browser=not args.no_browser, watch=not args.no_watch)
+
+
 def cmd_mcp(args) -> None:
     from .mcp_server import main
 
@@ -213,6 +219,13 @@ def build_parser() -> argparse.ArgumentParser:
     api.add_argument("--host", default="127.0.0.1")
     api.add_argument("--port", type=int, default=8787)
     api.set_defaults(fn=cmd_api)
+
+    ui = sub.add_parser("ui", help="open the web app (keeps syncing in the background)")
+    ui.add_argument("--host", default="127.0.0.1")
+    ui.add_argument("--port", type=int, default=8787)
+    ui.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    ui.add_argument("--no-watch", action="store_true", help="don't auto-sync in the background")
+    ui.set_defaults(fn=cmd_ui)
 
     m = sub.add_parser("mcp", help="run the MCP server (stdio by default)")
     m.add_argument("--http", action="store_true", help="serve streamable HTTP instead of stdio")

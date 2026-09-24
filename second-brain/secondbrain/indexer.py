@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass, field
+from typing import Callable
 
 from . import graph
 from .config import SourceConfig
@@ -64,7 +65,8 @@ def refresh_links(store: Store, changed: list[int]) -> None:
     store.commit()
 
 
-def sync_source(store: Store, source: SourceConfig) -> SyncStats:
+def sync_source(store: Store, source: SourceConfig,
+                on_progress: Callable[[SyncStats], None] | None = None) -> SyncStats:
     stats = SyncStats(source.name)
     connector = build_connector(source)
     known = store.uris_for_source(source.name)
@@ -83,6 +85,10 @@ def sync_source(store: Store, source: SourceConfig) -> SyncStats:
             setattr(stats, outcome, getattr(stats, outcome) + 1)
             if outcome != "unchanged":
                 changed.append(doc_id)
+            if stats.seen % 25 == 0:
+                store.commit()  # keep write transactions short so readers and `remember` aren't blocked
+                if on_progress:
+                    on_progress(stats)
     except Exception as exc:
         # Source unreachable (offline drive, network down): keep what we already know.
         stats.errors.append(f"source error: {exc}")

@@ -72,12 +72,12 @@ class Brain:
         self.llm = llm or LLM(self.config.model, self.config.effort)
 
     # ---- ingest ----------------------------------------------------------
-    def sync(self, source_name: str | None = None) -> list[SyncStats]:
+    def sync(self, source_name: str | None = None, on_progress=None) -> list[SyncStats]:
         results = []
         for src in self.config.all_sources():
             if source_name and src.name != source_name:
                 continue
-            results.append(sync_source(self.store, src))
+            results.append(sync_source(self.store, src, on_progress))
         if self.config.auto_enrich:
             self.enrich(limit=25)
         return results

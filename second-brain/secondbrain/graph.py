@@ -19,7 +19,7 @@ from urllib.request import url2pathname
 from .store import Store
 from .text import MDLINK, WIKILINK
 
-RELATED_THRESHOLD = 0.18
+RELATED_THRESHOLD = 0.08
 RELATED_MAX = 8
 
 

@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Second Brain</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --text: #1b1f24; --muted: #5f6b7a; --border: #dde1e6;
+  --accent: #5b5bd6; --accent-soft: #ececfb; --good: #1f8a4c; --warn: #b7791f; --bad: #c53030;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 12px rgba(16,24,40,.06);
+  --e-explicit: #5b5bd6; --e-related: #9aa4b2; --e-entity: #d97706;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --panel: #171b21; --panel-2: #1e232b; --text: #e7eaee; --muted: #9aa4b2; --border: #2a303a;
+    --accent: #8b8bff; --accent-soft: #23234a; --good: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    --shadow: 0 1px 2px rgba(0,0,0,.3); --e-related: #4b5563;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --panel: #171b21; --panel-2: #1e232b; --text: #e7eaee; --muted: #9aa4b2; --border: #2a303a;
+  --accent: #8b8bff; --accent-soft: #23234a; --good: #4ade80; --warn: #fbbf24; --bad: #f87171;
+  --shadow: 0 1px 2px rgba(0,0,0,.3); --e-related: #4b5563;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--accent); }
+button, input, textarea, select { font: inherit; color: inherit; }
+.app { display: grid; grid-template-columns: 220px 1fr; height: 100vh; }
+aside.nav { background: var(--panel); border-right: 1px solid var(--border); padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; }
+.brand { font-weight: 700; font-size: 18px; padding: 4px 10px 16px; display: flex; gap: 8px; align-items: center; }
+.nav button { all: unset; cursor: pointer; padding: 9px 12px; border-radius: 8px; color: var(--muted); display: flex; gap: 10px; align-items: center; }
+.nav button:hover { background: var(--panel-2); color: var(--text); }
+.nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nav .spacer { flex: 1; }
+.nav .meta { font-size: 12px; color: var(--muted); padding: 8px 12px; line-height: 1.7; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
+.dot.good { background: var(--good); } .dot.warn { background: var(--warn); } .dot.busy { background: var(--accent); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+main { overflow: auto; padding: 28px clamp(16px, 4vw, 48px) 60px; }
+.view { display: none; max-width: 980px; margin: 0 auto; }
+.view.active { display: block; }
+h1 { font-size: 24px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 22px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; box-shadow: var(--shadow); margin-bottom: 16px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 180px; }
+input[type=text], input[type=password], input[type=number], textarea, select {
+  width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; outline: none; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+textarea { resize: vertical; min-height: 90px; }
+label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; font-weight: 500; }
+.btn { text-decoration: none; display: inline-block; border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 9px 16px; cursor: pointer; font-weight: 500; white-space: nowrap; }
+.btn:hover { background: var(--panel-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.btn.danger { color: var(--bad); }
+.btn:disabled { opacity: .55; cursor: default; }
+.muted { color: var(--muted); } .small { font-size: 13px; }
+.pill { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+.pill.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.chat { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
+.msg.user { align-self: flex-end; background: var(--accent); color: #fff; padding: 10px 14px; border-radius: 14px 14px 4px 14px; max-width: 80%; }
+.msg.bot { background: var(--panel); border: 1px solid var(--border); padding: 16px 18px; border-radius: 12px; box-shadow: var(--shadow); }
+.msg.bot .sources { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.cite { background: var(--accent-soft); color: var(--accent); border-radius: 5px; padding: 0 5px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.srcchip { cursor: pointer; font-size: 13px; padding: 4px 10px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--border); }
+.srcchip:hover { border-color: var(--accent); }
+.md h1, .md h2, .md h3 { margin: 14px 0 6px; line-height: 1.3; } .md h1 { font-size: 20px; } .md h2 { font-size: 17px; } .md h3 { font-size: 15px; }
+.md p { margin: 6px 0; } .md ul, .md ol { margin: 6px 0; padding-left: 22px; }
+.md table { border-collapse: collapse; margin: 8px 0; } .md td, .md th { border: 1px solid var(--border); padding: 4px 8px; }
+.md code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+.composer { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg) 30%); padding-top: 16px; }
+.composer .card { display: flex; gap: 10px; padding: 10px; align-items: flex-end; margin: 0; }
+.composer textarea { border: none; box-shadow: none; min-height: 44px; max-height: 200px; }
+.result { padding: 12px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.result:hover .rtitle { color: var(--accent); }
+.rtitle { font-weight: 600; } .snippet { color: var(--muted); font-size: 14px; margin-top: 2px; }
+mark { background: #fde68a; color: inherit; border-radius: 2px; padding: 0 1px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) mark { background: #715d17; } }
+table.list { width: 100%; border-collapse: collapse; }
+table.list th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 8px; border-bottom: 1px solid var(--border); }
+table.list td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.list tr.click { cursor: pointer; } table.list tr.click:hover td { background: var(--panel-2); }
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.step { background: var(--panel-2); border-radius: 10px; padding: 14px; }
+.step b { display: block; margin-bottom: 4px; }
+#graphWrap { position: relative; height: calc(100vh - 190px); min-height: 420px; padding: 0; overflow: hidden; }
+#graph { width: 100%; height: 100%; display: block; cursor: grab; }
+.legend { position: absolute; left: 12px; bottom: 10px; font-size: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; display: flex; gap: 12px; }
+.legend i { display: inline-block; width: 16px; height: 3px; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+.drawer { position: fixed; top: 0; right: 0; height: 100vh; width: min(520px, 100vw); background: var(--panel); border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgba(0,0,0,.12); transform: translateX(105%); transition: transform .2s ease; z-index: 20; display: flex; flex-direction: column; }
+.drawer.open { transform: none; }
+.drawer header { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: flex-start; }
+.drawer header h2 { font-size: 18px; margin: 0; flex: 1; }
+.drawer .body { overflow: auto; padding: 16px 18px; }
+.drawer pre { white-space: pre-wrap; word-wrap: break-word; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel-2); padding: 12px; border-radius: 8px; max-height: 45vh; overflow: auto; }
+.rel { padding: 7px 0; border-bottom: 1px dashed var(--border); cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+.rel:hover span.t { color: var(--accent); }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; z-index: 30; padding: 16px; }
+.modal.open { display: flex; }
+.modal .card { width: min(560px, 100%); margin: 0; }
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; z-index: 40; display: none; max-width: 90vw; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.banner { background: var(--accent-soft); color: var(--text); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; display: none; }
+.hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.hint code { background: var(--panel-2); padding: 1px 4px; border-radius: 4px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { all: unset; cursor: pointer; padding: 8px 14px; font-size: 14px; }
+.seg button.on { background: var(--accent); color: #fff; }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  aside.nav { flex-direction: row; overflow-x: auto; padding: 8px; border-right: none; border-bottom: 1px solid var(--border); }
+  .brand, .nav .spacer, .nav .meta { display: none; }
+  .nav button { padding: 8px 10px; white-space: nowrap; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="nav" id="nav">
+    <div class="brand">🧠 Second Brain</div>
+    <button data-view="ask" class="active">💬 Ask</button>
+    <button data-view="search">🔎 Search</button>
+    <button data-view="library">📚 Library</button>
+    <button data-view="graph">🕸️ Connections</button>
+    <button data-view="create">✨ Create</button>
+    <button data-view="sources">🔌 Sources &amp; settings</button>
+    <button id="rememberBtn">📝 Remember…</button>
+    <div class="spacer"></div>
+    <div class="meta" id="meta">Loading…</div>
+  </aside>
+
+  <main>
+    <div class="banner" id="syncBanner"><span class="spinner"></span> <span id="syncText">Syncing…</span></div>
+
+    <!-- ASK -->
+    <section class="view active" id="view-ask">
+      <h1>Ask your brain</h1>
+      <p class="sub">Answers come from your own documents, with numbered citations you can open.</p>
+      <div id="welcome" class="card" style="display:none">
+        <h3 style="margin-top:0">Welcome 👋 Let's connect your knowledge</h3>
+        <div class="steps">
+          <div class="step"><b>1 · Add folders</b>Point at Documents, OneDrive, Dropbox, Google Drive or any folder.<br><a href="#" data-goto="sources">Add a source →</a></div>
+          <div class="step"><b>2 · Let it index</b>Word, PowerPoint, PDF, Excel, notes and emails are read and linked automatically.</div>
+          <div class="step"><b>3 · Connect Claude</b>Paste your Anthropic API key to get written answers, documents and decks.<br><a href="#" data-goto="sources">Add key →</a></div>
+          <div class="step"><b>4 · Ask &amp; create</b>Ask questions here, or produce Word briefs and PowerPoint decks on the Create tab.</div>
+        </div>
+      </div>
+      <div class="chat" id="chat"></div>
+      <div class="composer">
+        <div class="card">
+          <textarea id="question" class="grow" rows="1" placeholder="e.g. What did we recommend to Acme on pricing, and why?"></textarea>
+          <button class="btn primary" id="askBtn">Ask</button>
+        </div>
+        <div class="hint" style="text-align:center">Enter to send · Shift+Enter for a new line</div>
+      </div>
+    </section>
+
+    <!-- SEARCH -->
+    <section class="view" id="view-search">
+      <h1>Search</h1>
+      <p class="sub">Keyword search across everything, including text inside Office files and PDFs.</p>
+      <div class="card row">
+        <input type="text" id="searchBox" class="grow" placeholder="Search words or phrases…">
+        <select id="searchSource" style="width:auto"><option value="">All sources</option></select>
+        <button class="btn primary" id="searchBtn">Search</button>
+      </div>
+      <div class="card" id="searchResults"><div class="empty">Type something to search.</div></div>
+    </section>
+
+    <!-- LIBRARY -->
+    <section class="view" id="view-library">
+      <h1>Library</h1>
+      <p class="sub">Everything the brain has read, newest first.</p>
+      <div class="card row">
+        <input type="text" id="libFilter" class="grow" placeholder="Filter by title…">
+        <select id="libSource" style="width:auto"><option value="">All sources</option></select>
+      </div>
+      <div class="card" style="padding:6px 10px"><table class="list"><thead><tr><th>Title</th><th>Type</th><th>Source</th><th>Indexed</th></tr></thead><tbody id="libBody"></tbody></table>
+        <div class="row" style="justify-content:center;padding:10px"><button class="btn small" id="libMore">Load more</button></div></div>
+    </section>
+
+    <!-- GRAPH -->
+    <section class="view" id="view-graph" style="max-width:none">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <div><h1>Connections</h1><p class="sub" style="margin:0">How your knowledge links together. Drag to pan, scroll to zoom, click a dot to open it.</p></div>
+        <div class="row">
+          <label class="small" style="margin:0"><input type="checkbox" class="ekind" value="explicit" checked> links</label>
+          <label class="small" style="margin:0"><input type="checkbox" class="ekind" value="related" checked> similar topics</label>
+          <label class="small" style="margin:0"><input type="checkbox" class="ekind" value="entity" checked> shared people/companies</label>
+          <button class="btn small" id="graphReload">Refresh</button>
+        </div>
+      </div>
+      <div class="card" id="graphWrap"><canvas id="graph"></canvas>
+        <div class="legend"><span><i style="background:var(--e-explicit)"></i>link</span><span><i style="background:var(--e-related)"></i>similar</span><span><i style="background:var(--e-entity)"></i>shared entity</span></div>
+      </div>
+    </section>
+
+    <!-- CREATE -->
+    <section class="view" id="view-create">
+      <h1>Create</h1>
+      <p class="sub">Generate a document or a deck grounded in your knowledge. Files are saved to your outputs folder and learned by the brain.</p>
+      <div class="card">
+        <div class="seg" id="createType"><button data-t="docx" class="on">📄 Word document</button><button data-t="deck">📊 PowerPoint deck</button><button data-t="md">📝 Markdown</button></div>
+        <label for="cTopic">Topic</label>
+        <input type="text" id="cTopic" placeholder="e.g. Acme pricing strategy – executive brief">
+        <label for="cInstr">Instructions (optional)</label>
+        <textarea id="cInstr" placeholder="Audience, tone, structure, length… e.g. 'Board audience, 2 pages, end with 3 recommendations'"></textarea>
+        <div id="slidesRow" style="display:none"><label for="cSlides">Number of slides</label><input type="number" id="cSlides" value="8" min="2" max="30" style="width:120px"></div>
+        <div class="row" style="margin-top:14px"><button class="btn primary" id="createBtn">Create</button><span class="muted small" id="createNote"></span></div>
+      </div>
+      <div id="createResults"></div>
+    </section>
+
+    <!-- SOURCES -->
+    <section class="view" id="view-sources">
+      <h1>Sources &amp; settings</h1>
+      <p class="sub">Connect the places your knowledge lives. The brain re-checks them automatically and learns what changed.</p>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3 style="margin:0">Connected sources</h3>
+          <button class="btn" id="syncAll">↻ Sync everything now</button></div>
+        <table class="list" style="margin-top:8px"><thead><tr><th>Name</th><th>Where</th><th>Docs</th><th>Last sync</th><th></th></tr></thead><tbody id="srcBody"></tbody></table>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">Add a source</h3>
+        <div class="row">
+          <div style="width:220px"><label>Type</label>
+            <select id="srcType">
+              <option value="folder">Folder on this computer</option>
+              <option value="web">Web pages / online PDFs</option>
+              <option value="http_json">JSON API</option>
+              <option value="gdrive">Google Drive (API)</option>
+            </select></div>
+          <div style="width:200px"><label>Name</label><input type="text" id="srcName" placeholder="e.g. Clients"></div>
+          <div class="grow"><label id="srcTargetLabel">Folder path</label><input type="text" id="srcTarget" placeholder=""></div>
+        </div>
+        <div class="hint" id="srcHint"></div>
+        <div class="row" style="margin-top:12px"><button class="btn primary" id="srcAdd">Add &amp; sync</button></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">Claude connection</h3>
+        <p class="small muted" id="claudeState">Checking…</p>
+        <div class="row"><input type="password" id="claudeKey" class="grow" placeholder="sk-ant-…" autocomplete="off">
+          <button class="btn" id="claudeSave">Save key</button></div>
+        <div class="hint">Stored only on this computer in <code id="secretsPath">~/.secondbrain/secrets.env</code>. Get a key at console.anthropic.com. Search and connections work without it.</div>
+        <div class="row" style="margin-top:14px"><button class="btn" id="enrichBtn">🧩 Summarise &amp; connect documents with Claude</button>
+          <span class="small muted">Adds summaries, tags and people/company links (uses API credits, 20 docs per click).</span></div>
+      </div>
+
+      <div class="card small muted" id="paths"></div>
+    </section>
+  </main>
+</div>
+
+<div class="drawer" id="drawer">
+  <header><h2 id="dTitle"></h2><button class="btn small" id="dClose">✕</button></header>
+  <div class="body" id="dBody"></div>
+</div>
+
+<div class="modal" id="rememberModal">
+  <div class="card">
+    <h3 style="margin-top:0">📝 Remember something</h3>
+    <p class="small muted" style="margin-top:0">A fact, a decision, meeting notes… it becomes searchable and gets linked. Use [[Title]] to link to a document.</p>
+    <label>Title (optional)</label><input type="text" id="remTitle">
+    <label>Note</label><textarea id="remText" rows="6"></textarea>
+    <label>Tags (comma separated, optional)</label><input type="text" id="remTags">
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="remCancel">Cancel</button><button class="btn primary" id="remSave">Save to brain</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+let STATUS = null;
+
+// ---------- API ----------
+async function api(path, body) {
+  const headers = { "Content-Type": "application/json" };
+  const token = store.get("brainToken");
+  if (token) headers.Authorization = "Bearer " + token;
+  const res = await fetch(path, body === undefined ? { headers } : { method: "POST", headers, body: JSON.stringify(body) });
+  if (res.status === 401) {
+    const t = prompt("This brain is protected. Enter the API token (BRAIN_API_TOKEN):");
+    if (t) { store.set("brainToken", t); return api(path, body); }
+    throw new Error("unauthorised");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+const withToken = url => { const t = store.get("brainToken"); return t ? url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(t) : url; };
+function toast(msg, ms = 3200) { const t = $("#toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", ms); }
+const ago = ts => { if (!ts) return "never"; const s = Date.now() / 1000 - ts; if (s < 60) return "just now"; if (s < 3600) return Math.floor(s / 60) + " min ago"; if (s < 86400) return Math.floor(s / 3600) + " h ago"; return new Date(ts * 1000).toLocaleDateString(); };
+const kindIcon = k => ({ note: "📝", pdf: "📕", document: "📄", presentation: "📊", spreadsheet: "📈", data: "🗂️", web: "🌐", email: "✉️", code: "💻" }[k] || "📁");
+
+// ---------- markdown (small, safe: escapes first) ----------
+function md(src) {
+  const lines = esc(src).split("\n"); let out = [], list = null, table = [];
+  const inline = s => s.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[^*])\*([^*]+)\*/g, "$1<i>$2</i>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[(\d+)\]/g, '<span class="cite" data-n="$1">$1</span>');
+  const flushList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  const flushTable = () => { if (table.length) { const rows = table.filter(r => !/^[\s|:-]+$/.test(r));
+    out.push("<table>" + rows.map((r, i) => "<tr>" + r.replace(/^\||\|$/g, "").split("|").map(c => i ? `<td>${inline(c.trim())}</td>` : `<th>${inline(c.trim())}</th>`).join("") + "</tr>").join("") + "</table>"); table = []; } };
+  for (const line of lines) {
+    if (/^\s*\|.*\|\s*$/.test(line)) { flushList(); table.push(line.trim()); continue; } flushTable();
+    let m;
+    if ((m = line.match(/^(#{1,4})\s+(.*)/))) { flushList(); out.push(`<h${Math.min(m[1].length, 3)}>${inline(m[2])}</h${Math.min(m[1].length, 3)}>`); }
+    else if ((m = line.match(/^\s*[-*•]\s+(.*)/))) { if (list !== "ul") { flushList(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) { if (list !== "ol") { flushList(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if (!line.trim()) flushList();
+    else { flushList(); out.push(`<p>${inline(line)}</p>`); }
+  }
+  flushList(); flushTable(); return out.join("");
+}
+
+// ---------- navigation ----------
+function show(view) {
+  $$(".nav button[data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === view));
+  $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + view));
+  store.set("brainView", view);
+  if (view === "library") loadLibrary(true);
+  if (view === "graph") loadGraph();
+  if (view === "sources") renderSources();
+}
+$$(".nav button[data-view]").forEach(b => b.onclick = () => show(b.dataset.view));
+document.addEventListener("click", e => { const g = e.target.closest("[data-goto]"); if (g) { e.preventDefault(); show(g.dataset.goto); } });
+
+// ---------- status ----------
+async function refreshStatus() {
+  try { STATUS = await api("/status"); } catch (e) { $("#meta").textContent = "Offline: " + e.message; return; }
+  const s = STATUS.stats, sync = STATUS.sync;
+  $("#meta").innerHTML = `<div><span class="dot ${sync.running ? "busy" : "good"}"></span>${sync.running ? "Syncing…" : "Up to date"}</div>
+    <div>${s.documents} documents · ${s.links} connections</div>
+    <div><span class="dot ${STATUS.claude_configured ? "good" : "warn"}"></span>Claude ${STATUS.claude_configured ? "connected" : "not connected"}</div>`;
+  $("#syncBanner").style.display = sync.running ? "block" : "none";
+  $("#syncText").textContent = sync.running ? (sync.progress || "Syncing your sources… (the first sync of a large folder can take a few minutes)") : "";
+  $("#welcome").style.display = s.documents === 0 ? "block" : "none";
+  const opts = '<option value="">All sources</option>' + STATUS.configured_sources.map(x => `<option>${esc(x.name)}</option>`).join("");
+  for (const id of ["#searchSource", "#libSource"]) { const el = $(id), v = el.value; el.innerHTML = opts; el.value = v; }
+  if ($("#view-sources").classList.contains("active")) renderSources();
+  if (refreshStatus._wasRunning && !sync.running) { toast("Sync finished"); if ($("#view-library").classList.contains("active")) loadLibrary(true); }
+  refreshStatus._wasRunning = sync.running;
+}
+setInterval(refreshStatus, 3000);
+
+// ---------- drawer (document view) ----------
+async function openDoc(id) {
+  const d = await api("/documents/" + id).catch(e => toast(e.message));
+  if (!d) return;
+  $("#dTitle").textContent = kindIcon(d.kind) + " " + d.title;
+  const isFile = d.uri.startsWith("file:");
+  const rel = d.related.length ? d.related.map(r => `<div class="rel" data-doc="${r.doc_id}"><span class="pill ${r.kind === "explicit" ? "accent" : ""}">${r.kind === "explicit" ? "link" : r.kind === "related" ? "similar" : "shared"}</span><span class="t">${esc(r.title)}</span><span class="muted small">${esc(r.label || "")}</span></div>`).join("") : '<p class="muted small">No connections yet.</p>';
+  $("#dBody").innerHTML = `
+    <div class="row small muted" style="margin-bottom:10px"><span class="pill">${esc(d.kind)}</span><span class="pill">${esc(d.source)}</span><span>indexed ${ago(d.indexed_at)}</span>${d.revisions.length ? `<span>· ${d.revisions.length} earlier version(s)</span>` : ""}</div>
+    <div class="row" style="margin-bottom:14px">${isFile ? `<a class="btn small" href="${withToken(`/documents/${d.id}/file`)}" target="_blank">Open original</a><a class="btn small" href="${withToken(`/documents/${d.id}/file?download=1`)}">Download</a>` : d.uri.startsWith("http") ? `<a class="btn small" href="${esc(d.uri)}" target="_blank" rel="noopener">Open web page</a>` : ""}
+      <button class="btn small" id="dAsk">Ask about this</button></div>
+    ${d.summary ? `<h4 style="margin:6px 0">Summary</h4><p>${esc(d.summary)}</p>` : ""}
+    ${d.tags.length ? `<div class="row" style="margin-bottom:10px">${d.tags.map(t => `<span class="pill accent">${esc(t)}</span>`).join("")}</div>` : ""}
+    <h4 style="margin:14px 0 4px">Connected documents</h4>${rel}
+    <h4 style="margin:16px 0 6px">Content</h4><pre>${esc(d.text.slice(0, 20000))}${d.text.length > 20000 ? "\n…" : ""}</pre>
+    <p class="small muted" style="word-break:break-all">${esc(d.uri)}</p>`;
+  $("#dAsk").onclick = () => { closeDoc(); show("ask"); $("#question").value = `Regarding "${d.title}": `; $("#question").focus(); };
+  $("#drawer").classList.add("open");
+}
+const closeDoc = () => $("#drawer").classList.remove("open");
+$("#dClose").onclick = closeDoc;
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeDoc(); $("#rememberModal").classList.remove("open"); } });
+document.addEventListener("click", e => { const r = e.target.closest("[data-doc]"); if (r) openDoc(r.dataset.doc); });
+
+// ---------- ask ----------
+async function ask() {
+  const q = $("#question").value.trim(); if (!q) return;
+  $("#question").value = ""; autosize();
+  const chat = $("#chat");
+  chat.insertAdjacentHTML("beforeend", `<div class="msg user">${esc(q)}</div>`);
+  const bot = document.createElement("div"); bot.className = "msg bot"; bot.innerHTML = '<span class="spinner"></span> <span class="muted">Thinking through your knowledge…</span>';
+  chat.appendChild(bot); bot.scrollIntoView({ behavior: "smooth", block: "end" });
+  $("#askBtn").disabled = true;
+  try {
+    const r = await api("/ask", { question: q });
+    const bySrc = Object.fromEntries(r.sources.map(s => [s.n, s]));
+    bot.innerHTML = (r.mode === "extractive" ? '<p class="small" style="color:var(--warn)">Claude isn\'t connected, so here are the most relevant passages. Add your key under Sources &amp; settings for written answers.</p>' : "")
+      + `<div class="md">${md(r.answer.replace(/^\(Claude unavailable[^)]*\)\s*/, ""))}</div>`
+      + (r.sources.length ? `<div class="sources">${r.sources.map(s => `<span class="srcchip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div>` : "");
+    $$(".cite", bot).forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } });
+  } catch (e) { bot.innerHTML = `<span style="color:var(--bad)">Something went wrong: ${esc(e.message)}</span>`; }
+  $("#askBtn").disabled = false;
+}
+const autosize = () => { const t = $("#question"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 200) + "px"; };
+$("#question").addEventListener("input", autosize);
+$("#question").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } });
+$("#askBtn").onclick = ask;
+
+// ---------- search ----------
+async function doSearch() {
+  const q = $("#searchBox").value.trim(); if (!q) return;
+  const box = $("#searchResults"); box.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  const src = $("#searchSource").value;
+  try {
+    const hits = await api(`/search?q=${encodeURIComponent(q)}&limit=25${src ? "&source=" + encodeURIComponent(src) : ""}`);
+    const words = q.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+    const hl = s => { let h = esc(s); for (const w of words) h = h.replace(new RegExp(`(${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\w*)`, "gi"), "<mark>$1</mark>"); return h; };
+    box.innerHTML = hits.length ? hits.map(h => {
+      const t = h.text.replace(/\s+/g, " "); const i = Math.max(0, t.toLowerCase().indexOf(words[0] || "") - 80);
+      return `<div class="result" data-doc="${h.doc_id}"><div class="rtitle">${esc(h.title)}</div><div class="snippet">${i ? "…" : ""}${hl(t.slice(i, i + 260))}…</div><div class="small muted">${esc(h.source)}</div></div>`;
+    }).join("") : '<div class="empty">No matches. Try different words, or check the source is synced.</div>';
+  } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+$("#searchBtn").onclick = doSearch;
+$("#searchBox").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+
+// ---------- library ----------
+let libOffset = 0, libDocs = [];
+async function loadLibrary(reset) {
+  if (reset) { libOffset = 0; libDocs = []; }
+  const src = $("#libSource").value;
+  const page = await api(`/documents?limit=200&offset=${libOffset}${src ? "&source=" + encodeURIComponent(src) : ""}`).catch(() => []);
+  libDocs = libDocs.concat(page); libOffset += page.length;
+  $("#libMore").style.display = page.length === 200 ? "" : "none";
+  renderLibrary();
+}
+function renderLibrary() {
+  const f = $("#libFilter").value.toLowerCase();
+  const rows = libDocs.filter(d => !f || d.title.toLowerCase().includes(f));
+  $("#libBody").innerHTML = rows.length ? rows.map(d => `<tr class="click" data-doc="${d.id}"><td>${kindIcon(d.kind)} ${esc(d.title)}${d.summary ? `<div class="small muted">${esc(d.summary.slice(0, 140))}</div>` : ""}</td><td class="small">${esc(d.kind)}</td><td class="small">${esc(d.source)}</td><td class="small muted">${ago(d.indexed_at)}</td></tr>`).join("")
+    : '<tr><td colspan="4"><div class="empty">Nothing here yet. Add a source to get started.</div></td></tr>';
+}
+$("#libFilter").addEventListener("input", renderLibrary);
+$("#libSource").addEventListener("change", () => loadLibrary(true));
+$("#libMore").onclick = () => loadLibrary(false);
+
+// ---------- create ----------
+let createType = "docx";
+$$("#createType button").forEach(b => b.onclick = () => { createType = b.dataset.t; $$("#createType button").forEach(x => x.classList.toggle("on", x === b)); $("#slidesRow").style.display = createType === "deck" ? "" : "none"; });
+$("#createBtn").onclick = async () => {
+  const topic = $("#cTopic").value.trim(); if (!topic) { toast("Add a topic first"); return; }
+  const btn = $("#createBtn"); btn.disabled = true; $("#createNote").innerHTML = '<span class="spinner"></span> Researching your knowledge and writing… (can take a minute)';
+  try {
+    const instructions = $("#cInstr").value.trim();
+    const r = createType === "deck" ? await api("/create/deck", { topic, slides: +$("#cSlides").value || 8, instructions })
+                                    : await api("/create/document", { topic, format: createType, instructions });
+    const name = r.path.split(/[\\/]/).pop();
+    $("#createResults").insertAdjacentHTML("afterbegin", `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${createType === "deck" ? "📊" : "📄"} ${esc(name)}</b>
+      <div class="small muted">${r.mode === "extractive" ? "Draft built without Claude (connect Claude for a written version) · " : ""}${r.sources.length} sources · saved to ${esc(r.path)}</div></div>
+      <a class="btn primary" href="${withToken(r.download + "?download=1")}">Download</a></div>
+      <div class="row" style="margin-top:10px">${r.sources.map(s => `<span class="srcchip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div></div>`);
+    $("#createNote").textContent = "";
+  } catch (e) { $("#createNote").textContent = "Failed: " + e.message; }
+  btn.disabled = false;
+};
+
+// ---------- sources & settings ----------
+const HINTS = {
+  folder: ["Folder path", "Windows: C:\\Users\\you\\OneDrive - Company\\Clients   ·   Mac: /Users/you/Library/CloudStorage/OneDrive-Company/Clients", "Any folder works: Documents, Desktop, an Obsidian vault, a USB/NAS drive, or cloud folders synced by OneDrive, SharePoint, Dropbox, Google Drive for desktop, iCloud or Box. Tip: in Explorer, Shift+right-click a folder → “Copy as path”; on Mac, right-click → hold Option → “Copy … as Pathname”."],
+  web: ["URLs", "https://example.com/report.pdf, https://example.com/article", "One or more web pages or online PDFs, separated by commas or spaces. They are re-checked on every sync."],
+  http_json: ["API URL", "https://api.example.com/v1/notes", "For headers, tokens and field mapping, edit the config file (see brain.example.toml)."],
+  gdrive: ["Drive folder ID", "1AbCdEf… (from the folder's URL)", "Needs a Google service-account key saved as ~/.secondbrain/gdrive-sa.json and pip install google-api-python-client google-auth. Simpler alternative: install Google Drive for desktop and add its folder as a normal folder."],
+};
+function srcHint() { const h = HINTS[$("#srcType").value]; $("#srcTargetLabel").textContent = h[0]; $("#srcTarget").placeholder = h[1]; $("#srcHint").textContent = h[2]; }
+$("#srcType").onchange = srcHint; srcHint();
+
+function renderSources() {
+  if (!STATUS) return;
+  const byName = Object.fromEntries(STATUS.sources.map(s => [s.name, s]));
+  $("#srcBody").innerHTML = STATUS.configured_sources.map(c => {
+    const s = byName[c.name] || {}; const errs = (s.last_stats && s.last_stats.errors) || [];
+    const where = c.path || (c.urls || []).join(", ") || c.url || c.folder_id || "";
+    const builtIn = c.name === "_outputs";
+    return `<tr><td><b>${esc(builtIn ? "Created by the brain" : c.name)}</b><div class="small muted">${esc(c.type)}</div></td>
+      <td class="small" style="word-break:break-all">${esc(where)}${errs.length ? `<div style="color:var(--warn)">⚠ ${errs.length} issue(s): ${esc(errs[0]).slice(0, 160)}</div>` : ""}</td>
+      <td>${s.documents ?? 0}</td><td class="small muted">${ago(s.last_sync)}</td>
+      <td style="white-space:nowrap"><button class="btn small" data-sync="${esc(c.name)}">Sync</button>${builtIn ? "" : ` <button class="btn small danger" data-remove="${esc(c.name)}">Remove</button>`}</td></tr>`;
+  }).join("") || '<tr><td colspan="5"><div class="empty">No sources yet. Add your first folder below.</div></td></tr>';
+  $("#claudeState").innerHTML = STATUS.claude_configured ? '<span class="dot good"></span>Connected: answers, documents and decks are written by Claude (' + esc(STATUS.model) + ")."
+    : '<span class="dot warn"></span>Not connected: you can still search and browse. Add a key for written answers, documents and decks.';
+  $("#secretsPath").textContent = STATUS.db.replace(/brain\.db$/, "secrets.env");
+  $("#paths").innerHTML = `Config file: <code>${esc(STATUS.config_file)}</code><br>Database: <code>${esc(STATUS.db)}</code><br>Created files: <code>${esc(STATUS.outputs)}</code>`;
+}
+document.addEventListener("click", async e => {
+  const s = e.target.closest("[data-sync]"), r = e.target.closest("[data-remove]");
+  if (s) { const res = await api("/sync", { source: s.dataset.sync }); toast(res.started ? "Sync started" : res.reason); refreshStatus(); }
+  if (r && confirm(`Remove source "${r.dataset.remove}"? Its documents will be removed from the brain on the next sync. Your files are not touched.`)) {
+    try { await api("/sources/remove", { name: r.dataset.remove }); toast("Removed"); await api("/sync", {}); refreshStatus(); } catch (err) { toast(err.message); }
+  }
+});
+$("#syncAll").onclick = async () => { const r = await api("/sync", {}); toast(r.started ? "Sync started" : r.reason); refreshStatus(); };
+$("#srcAdd").onclick = async () => {
+  const body = { type: $("#srcType").value, name: $("#srcName").value.trim(), target: $("#srcTarget").value.trim().replace(/^"|"$/g, "") };
+  if (!body.name || !body.target) { toast("Fill in a name and a location"); return; }
+  try { await api("/sources", body); toast(`Added "${body.name}", syncing now`); $("#srcName").value = $("#srcTarget").value = ""; refreshStatus(); }
+  catch (e) { toast(e.message, 6000); }
+};
+$("#claudeSave").onclick = async () => {
+  const key = $("#claudeKey").value.trim(); if (!key) return;
+  try { await api("/settings/claude-key", { key }); $("#claudeKey").value = ""; toast("Key saved on this computer"); refreshStatus(); } catch (e) { toast(e.message); }
+};
+$("#enrichBtn").onclick = async () => {
+  const b = $("#enrichBtn"); b.disabled = true; b.textContent = "Working…";
+  try { const r = await api("/enrich", { limit: 20 }); toast(r.errors.length ? r.errors[0] : `Enriched ${r.enriched} documents`); } catch (e) { toast(e.message); }
+  b.disabled = false; b.textContent = "🧩 Summarise & connect documents with Claude";
+};
+
+// ---------- remember ----------
+$("#rememberBtn").onclick = () => { $("#rememberModal").classList.add("open"); $("#remText").focus(); };
+$("#remCancel").onclick = () => $("#rememberModal").classList.remove("open");
+$("#remSave").onclick = async () => {
+  const text = $("#remText").value.trim(); if (!text) return;
+  const tags = $("#remTags").value.split(",").map(t => t.trim()).filter(Boolean);
+  try { await api("/remember", { text, title: $("#remTitle").value.trim() || null, tags }); $("#rememberModal").classList.remove("open"); $("#remText").value = $("#remTitle").value = $("#remTags").value = ""; toast("Saved. Your brain will remember it."); refreshStatus(); }
+  catch (e) { toast(e.message); }
+};
+
+// ---------- graph (force-directed, canvas, no libraries) ----------
+const G = { nodes: [], edges: [], scale: 1, ox: 0, oy: 0, running: false, hover: null, drag: null };
+const PALETTE = ["#5b5bd6", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#ec4899", "#84cc16", "#64748b"];
+async function loadGraph() {
+  const data = await api("/graph").catch(() => null); if (!data) return;
+  const kinds = new Set($$(".ekind").filter(c => c.checked).map(c => c.value));
+  const cv = $("#graph"), W = cv.clientWidth, H = cv.clientHeight;
+  const sources = [...new Set(data.nodes.map(n => n.source))];
+  const idx = new Map(); const degree = {};
+  const edges = data.edges.filter(e => kinds.has(e.kind));
+  edges.forEach(e => { degree[e.src] = (degree[e.src] || 0) + 1; degree[e.dst] = (degree[e.dst] || 0) + 1; });
+  let nodes = data.nodes;
+  if (nodes.length > 600) nodes = nodes.filter(n => degree[n.id]).slice(0, 600);
+  G.nodes = nodes.map((n, i) => { const a = i * 2.399963, r = 12 * Math.sqrt(i + 1); idx.set(n.id, i);
+    return { ...n, x: W / 2 + r * Math.cos(a), y: H / 2 + r * Math.sin(a), vx: 0, vy: 0, deg: degree[n.id] || 0, color: PALETTE[sources.indexOf(n.source) % PALETTE.length] }; });
+  G.edges = edges.filter(e => idx.has(e.src) && idx.has(e.dst)).map(e => ({ a: idx.get(e.src), b: idx.get(e.dst), kind: e.kind }));
+  G.scale = 1; G.ox = 0; G.oy = 0; G.alpha = 1;
+  if (!G.running) { G.running = true; requestAnimationFrame(tick); }
+}
+$("#graphReload").onclick = loadGraph; $$(".ekind").forEach(c => c.onchange = loadGraph);
+function tick() {
+  const cv = $("#graph"); if (!cv.isConnected || !$("#view-graph").classList.contains("active")) { G.running = false; return; }
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+  const N = G.nodes, a = G.alpha;
+  if (a > 0.01) {
+    for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
+      const p = N[i], q = N[j]; let dx = p.x - q.x, dy = p.y - q.y, d2 = dx * dx + dy * dy + 0.01;
+      if (d2 > 90000) continue; const f = 900 / d2 * a; p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f; }
+    for (const e of G.edges) { const p = N[e.a], q = N[e.b]; const dx = q.x - p.x, dy = q.y - p.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const k = (d - (e.kind === "explicit" ? 60 : 90)) * 0.02 * a; p.vx += dx / d * k; p.vy += dy / d * k; q.vx -= dx / d * k; q.vy -= dy / d * k; }
+    for (const n of N) { n.vx += (W / 2 - n.x) * 0.002 * a; n.vy += (H / 2 - n.y) * 0.002 * a; if (n !== G.drag) { n.x += n.vx; n.y += n.vy; } n.vx *= 0.6; n.vy *= 0.6; }
+    G.alpha *= 0.992;
+  }
+  const ctx = cv.getContext("2d"), css = getComputedStyle(document.documentElement);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  ctx.translate(G.ox, G.oy); ctx.scale(G.scale, G.scale);
+  const ec = { explicit: css.getPropertyValue("--e-explicit").trim(), related: css.getPropertyValue("--e-related").trim(), entity: css.getPropertyValue("--e-entity").trim() };
+  const textColor = css.getPropertyValue("--text").trim();
+  for (const e of G.edges) { const p = N[e.a], q = N[e.b]; const hot = G.hover && (p === G.hover || q === G.hover);
+    ctx.strokeStyle = ec[e.kind]; ctx.globalAlpha = hot ? 1 : G.hover ? 0.12 : 0.55; ctx.lineWidth = (e.kind === "explicit" ? 1.8 : 1) / G.scale;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); }
+  ctx.globalAlpha = 1; ctx.font = `${12 / G.scale}px system-ui`; ctx.fillStyle = textColor;
+  for (const n of N) { const r = 4 + Math.min(10, Math.sqrt(n.deg) * 2);
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 7); ctx.fillStyle = n.color; ctx.globalAlpha = G.hover && G.hover !== n ? 0.5 : 1; ctx.fill();
+    if (n === G.hover || n.deg >= 3 || N.length < 40) { ctx.fillStyle = textColor; ctx.globalAlpha = 1; ctx.fillText(n.title.slice(0, 40), n.x + r + 3, n.y + 4); } }
+  requestAnimationFrame(tick);
+}
+(function graphInput() {
+  const cv = $("#graph"); let pan = null, moved = false;
+  const pt = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left - G.ox) / G.scale, y: (e.clientY - r.top - G.oy) / G.scale }; };
+  const hit = p => G.nodes.find(n => (n.x - p.x) ** 2 + (n.y - p.y) ** 2 < (10 / G.scale + 6) ** 2);
+  cv.addEventListener("mousedown", e => { moved = false; const n = hit(pt(e)); if (n) { G.drag = n; G.alpha = Math.max(G.alpha, 0.3); } else pan = { x: e.clientX - G.ox, y: e.clientY - G.oy }; });
+  window.addEventListener("mousemove", e => { if (G.drag) { const p = pt(e); G.drag.x = p.x; G.drag.y = p.y; moved = true; }
+    else if (pan) { G.ox = e.clientX - pan.x; G.oy = e.clientY - pan.y; moved = true; }
+    else if (e.target === cv) { G.hover = hit(pt(e)) || null; cv.style.cursor = G.hover ? "pointer" : "grab"; } });
+  window.addEventListener("mouseup", () => { if (G.drag && !moved) openDoc(G.drag.id); G.drag = null; pan = null; });
+  cv.addEventListener("wheel", e => { e.preventDefault(); const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+    const k = Math.exp(-e.deltaY * 0.0015), s = Math.min(4, Math.max(0.2, G.scale * k)); G.ox = mx - (mx - G.ox) * s / G.scale; G.oy = my - (my - G.oy) * s / G.scale; G.scale = s; }, { passive: false });
+})();
+
+// ---------- boot ----------
+refreshStatus().then(() => show(store.get("brainView") || "ask"));
+</script>
+</body>
+</html>

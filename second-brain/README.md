@@ -27,7 +27,20 @@ and slide decks from what you know, using Claude.
 | **Plugs into other tools** | **MCP server**: Claude can use the brain alongside Gmail, Calendar, Slack and other MCP servers. **REST API** with bearer-token auth for everything else. |
 | **Degrades gracefully** | Without Claude credentials, search, linking and sync still work. `ask` returns cited passages, and `create deck` builds an extractive draft. |
 
-## Quick start
+## Quick start: the app
+
+**New here? Follow [GETTING_STARTED.md](GETTING_STARTED.md)** for a step-by-step guide for Windows and Mac.
+
+Double-click **`Start Second Brain.bat`** (Windows) or **`Start Second Brain.command`** (Mac). The first run
+installs everything, then opens the app at <http://localhost:8787>. From there you can add your folders,
+paste your Claude key, and Ask / Search / browse Connections / Create documents and decks. While the app
+is open it keeps syncing in the background.
+
+| Ask with citations | Map of connections | Create decks & docs |
+|---|---|---|
+| ![Ask](docs/screenshots/ask.png) | ![Connections](docs/screenshots/graph.png) | ![Create](docs/screenshots/create.png) |
+
+## Quick start: command line
 
 ```bash
 cd second-brain
@@ -45,7 +58,7 @@ brain enrich --limit 50               # Claude summarises, tags, extracts entiti
 brain watch                           # keep learning in the background
 ```
 
-Other commands: `search`, `show <id>`, `related <id>`, `remember "…"`, `status`, `graph --out g.json`, `api`, `mcp`.
+Other commands: `ui`, `search`, `show <id>`, `related <id>`, `remember "…"`, `status`, `graph --out g.json`, `api`, `mcp`.
 
 ## Use it from Claude (MCP)
 

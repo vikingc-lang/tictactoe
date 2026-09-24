@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -205,33 +207,106 @@ def test_enrich_links_shared_entities(workspace):
     assert any(n["kind"] == "entity" for n in brain.related(doc.id, 50))
 
 
-def test_rest_api(workspace, monkeypatch):
+def _serve(brain, **kw):
     from secondbrain.api import make_server
 
+    server = make_server(brain, "127.0.0.1", 0, **kw)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def _call(base, path, body=None, token=None, raw=False):
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None,
+                                 headers=headers)
+    with urllib.request.urlopen(req) as r:
+        data = r.read()
+        return data if raw else json.loads(data)
+
+
+def _wait_for_sync(base, token=None):
+    for _ in range(200):
+        status = _call(base, "/status", token=token)
+        if not status["sync"]["running"]:
+            return status
+        time.sleep(0.05)
+    raise AssertionError("sync did not finish")
+
+
+def test_rest_api(workspace, monkeypatch):
     cfg, _ = workspace
     monkeypatch.setenv("BRAIN_API_TOKEN", "s3cret")
     brain = Brain(cfg, llm=OfflineLLM())
-    server = make_server(brain, "127.0.0.1", 0)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    base = f"http://127.0.0.1:{server.server_address[1]}"
-
-    def call(path, body=None, token="s3cret"):
-        req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None,
-                                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-        with urllib.request.urlopen(req) as r:
-            return json.loads(r.read())
-
+    server, base = _serve(brain)
     try:
         with pytest.raises(urllib.error.HTTPError):
-            call("/status", token="wrong")
-        assert call("/sync", {})[0]["added"] == 5
-        hits = call("/search?q=warehouse")
+            _call(base, "/status", token="wrong")
+        assert _call(base, "/sync", {}, token="s3cret")["started"] is True
+        status = _wait_for_sync(base, "s3cret")
+        assert status["stats"]["documents"] == 5 and status["sync"]["last_results"][0]["added"] == 5
+        hits = _call(base, "/search?q=warehouse", token="s3cret")
         assert hits[0]["title"] == "Supply Chain Assessment"
-        assert call(f"/documents/{hits[0]['doc_id']}")["kind"] == "document"
-        assert call("/remember", {"text": "Call Jane on Friday"})["status"] == "added"
-        assert call("/graph")["nodes"]
+        assert _call(base, f"/documents/{hits[0]['doc_id']}", token="s3cret")["kind"] == "document"
+        original = _call(base, f"/documents/{hits[0]['doc_id']}/file?token=s3cret", raw=True)
+        assert original[:2] == b"PK"                               # the real .docx comes back
+        assert _call(base, "/remember", {"text": "Call Jane on Friday"}, token="s3cret")["status"] == "added"
+        assert _call(base, "/graph", token="s3cret")["nodes"]
     finally:
         server.shutdown()
+
+
+def test_web_ui_flow(workspace, tmp_path, monkeypatch):
+    cfg, notes = workspace
+    monkeypatch.delenv("BRAIN_API_TOKEN", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    cfg.config_path = tmp_path / "brain.toml"
+    cfg.config_path.write_text(f'[brain]\ndata_dir = {json.dumps(str(cfg.data_dir))}\n'
+                               f'output_dir = {json.dumps(str(cfg.output_dir))}\n', encoding="utf-8")
+    cfg.sources = []
+    brain = Brain(cfg, llm=OfflineLLM())
+    server, base = _serve(brain)
+    try:
+        html = _call(base, "/", raw=True).decode()
+        assert "<title>Second Brain</title>" in html
+
+        # add a folder from the UI: it's written to brain.toml and synced in the background
+        with pytest.raises(urllib.error.HTTPError):
+            _call(base, "/sources", {"type": "folder", "name": "Bad", "target": str(tmp_path / "missing")})
+        assert _call(base, "/sources", {"type": "folder", "name": "My Notes", "target": str(notes)})["syncing"]
+        status = _wait_for_sync(base)
+        assert status["stats"]["documents"] == 5
+        assert "My Notes" in cfg.config_path.read_text()
+        assert any(s["name"] == "My Notes" for s in status["configured_sources"])
+
+        # create a deck and download it
+        deck = _call(base, "/create/deck", {"topic": "pricing strategy", "slides": 2})
+        data = _call(base, deck["download"] + "?download=1", raw=True)
+        assert data[:2] == b"PK"
+        with pytest.raises(urllib.error.HTTPError):
+            _call(base, "/outputs/..%2F..%2Fbrain.toml", raw=True)
+
+        # save a Claude key locally
+        assert _call(base, "/settings/claude-key", {"key": "sk-ant-test"})["saved"]
+        assert "ANTHROPIC_API_KEY=sk-ant-test" in (cfg.data_dir / "secrets.env").read_text()
+        assert _call(base, "/status")["claude_configured"] is True
+
+        # remove the source again
+        _call(base, "/sources/remove", {"name": "My Notes"})
+        assert "My Notes" not in cfg.config_path.read_text()
+    finally:
+        server.shutdown()
+
+
+def test_windows_paths_survive_config_round_trip(tmp_path):
+    from secondbrain.config import append_source, load_config
+
+    path = tmp_path / "brain.toml"
+    path.write_text(f"[brain]\ndata_dir = {json.dumps(str(tmp_path / 'd'))}\n", encoding="utf-8")
+    append_source(path, "OneDrive", "folder", path="C:\\Users\\me\\OneDrive - Contoso\\Clients")
+    cfg = load_config(str(path))
+    assert cfg.sources[0].options["path"] == "C:\\Users\\me\\OneDrive - Contoso\\Clients"
 
 
 def test_mcp_server_exposes_tools(workspace):
