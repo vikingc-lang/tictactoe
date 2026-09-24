@@ -3,6 +3,26 @@
 This takes about 10 minutes. Everything runs on your machine, and your files stay where they are.
 The brain reads them but never moves or changes them.
 
+## Fastest way: the single HTML file (no install)
+
+1. Download **`second-brain.html`** (in the `second-brain` folder, or ask for the file directly) and save it
+   somewhere permanent, such as `Documents/SecondBrain/second-brain.html`.
+2. Double-click it. It opens in your browser. **Chrome or Edge are recommended**, because folders you add
+   there keep updating automatically.
+3. Go to **🔌 Sources & settings → 📁 Add a folder…**, pick a folder (Documents, OneDrive, Dropbox, Google
+   Drive, and so on), and allow the browser to view it. You can also drag files onto the page.
+4. Paste your Claude API key under **Claude connection** to get written answers, documents and decks.
+5. Use Ask, Search, Library, Connections, Create and Remember.
+
+Your brain is saved inside that browser. Open the **same file in the same browser** to find it again. When you
+reopen it, click **Reconnect folders** if asked, so the browser can re-read your folders and pick up changes.
+Use **Export backup** to keep a copy or to move to another computer.
+
+You want the full Python app below if you need the brain available to Claude Desktop (MCP), a REST API
+for other tools, or always-on background syncing.
+
+---
+
 ## 1. Install Python (one time)
 
 You need **Python 3.11 or newer**.

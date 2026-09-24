@@ -27,6 +27,24 @@ and slide decks from what you know, using Claude.
 | **Plugs into other tools** | **MCP server**: Claude can use the brain alongside Gmail, Calendar, Slack and other MCP servers. **REST API** with bearer-token auth for everything else. |
 | **Degrades gracefully** | Without Claude credentials, search, linking and sync still work. `ask` returns cited passages, and `create deck` builds an extractive draft. |
 
+## Quickest start: one HTML file, nothing to install
+
+Double-click **[`second-brain.html`](second-brain.html)**. It opens in your browser and runs everything there:
+add folders (or drag files in), and it reads Word, PowerPoint, PDF, Excel, email and notes, links them, and
+lets you Ask, Search, see Connections, Remember, and Create Word/PowerPoint files. Your brain is saved in
+that browser; use *Export backup* to move it. Paste your Claude API key under *Sources & settings* for
+written answers, documents and decks. In **Chrome or Edge**, added folders keep updating automatically.
+
+It's generated from [`standalone/app.html`](standalone/app.html) (`cd standalone && npm install && npm run build`),
+which inlines the Anthropic SDK, PptxGenJS and PDF.js so it works offline. Only calls to Claude go online.
+
+| | HTML file | Python app (below) |
+|---|---|---|
+| Install | None | Python 3.11+ |
+| Where your brain lives | Inside your browser | `~/.secondbrain/brain.db` |
+| Auto-updates from folders | Chrome/Edge while open | Always, while running |
+| MCP server / REST API / CLI | No | Yes |
+
 ## Quick start: the app
 
 **New here? Follow [GETTING_STARTED.md](GETTING_STARTED.md)** for a step-by-step guide for Windows and Mac.
