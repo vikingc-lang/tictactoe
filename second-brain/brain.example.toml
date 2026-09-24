@@ -1,0 +1,63 @@
+# Second Brain configuration.  Copy to ~/.secondbrain/brain.toml (or run `brain init`).
+# Use ${ENV_VAR} for secrets - never paste tokens into this file.
+
+[brain]
+data_dir = "~/.secondbrain"               # brain.db (the whole brain, one portable file) lives here
+output_dir = "~/SecondBrain/Outputs"      # generated docs and decks
+model = "claude-opus-5"
+effort = "high"                           # low | medium | high | xhigh | max
+learn_from_outputs = true                 # index what the brain creates, so it builds on its own work
+auto_enrich = false                       # have Claude summarise, tag and entity-link new docs on every sync
+watch_interval = 60                       # seconds between syncs for `brain watch`
+# deck_template = "~/Templates/firm-master.pptx"   # build decks on your branded master
+# doc_template  = "~/Templates/firm-letterhead.docx"
+
+# ---------------------------------------------------------------- offline / local folders
+[[sources]]
+name = "notes"
+type = "folder"
+path = "~/Documents/Notes"                # Obsidian vaults work great ([[wikilinks]] become graph edges)
+
+# [[sources]]
+# name = "archive-drive"
+# type = "folder"
+# path = "/Volumes/Archive/Engagements"   # external/NAS drive; if it's unplugged, existing knowledge is kept
+# exclude = ["*draft*", "tmp"]
+# max_mb = 100
+
+# ---------------------------------------------------------------- cloud folders synced to disk
+# OneDrive / SharePoint / Dropbox / Google Drive for desktop / iCloud / Box all work as folders.
+# [[sources]]
+# name = "onedrive-clients"
+# type = "folder"
+# path = "~/OneDrive - Contoso/Clients"
+# include = ["*.docx", "*.pptx", "*.pdf", "*.xlsx", "*.md"]
+
+# ---------------------------------------------------------------- Google Drive via API (no sync client)
+# pip install "secondbrain[gdrive]"; share the folder with the service account's email.
+# [[sources]]
+# name = "drive-research"
+# type = "gdrive"
+# folder_id = "1AbCdEfGh..."
+# credentials = "~/.secondbrain/gdrive-sa.json"
+
+# ---------------------------------------------------------------- web pages / online PDFs
+# [[sources]]
+# name = "industry-reading"
+# type = "web"
+# urls = [
+#   "https://example.com/industry-report.pdf",
+#   "https://example.com/blog/pricing-trends",
+# ]
+
+# ---------------------------------------------------------------- any JSON REST API
+# [[sources]]
+# name = "crm-notes"
+# type = "http_json"
+# url = "https://api.example-crm.com/v1/notes?limit=500"
+# headers = { Authorization = "Bearer ${CRM_TOKEN}" }
+# items_path = "data"
+# id_field = "id"
+# title_field = "subject"
+# text_fields = ["body"]
+# updated_field = "updated_at"
