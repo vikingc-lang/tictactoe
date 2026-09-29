@@ -193,6 +193,10 @@ class Store:
         rows = self.db.execute("SELECT uri, id FROM documents WHERE source = ? AND deleted = 0", (source,))
         return {r["uri"]: r["id"] for r in rows}
 
+    def modified_for_source(self, source: str) -> dict[str, float | None]:
+        rows = self.db.execute("SELECT uri, modified FROM documents WHERE source = ? AND deleted = 0", (source,))
+        return {r["uri"]: r["modified"] for r in rows}
+
     def revisions(self, doc_id: int) -> list[dict[str, Any]]:
         rows = self.db.execute(
             "SELECT content_hash, indexed_at, summary FROM revisions WHERE doc_id = ? ORDER BY indexed_at DESC",
@@ -244,7 +248,7 @@ class Store:
         ).fetchall()
         best: dict[int, dict[str, Any]] = {}
         for r in rows:
-            score = r["weight"] + (1.0 if r["kind"] == "explicit" else 0.0)
+            score = r["weight"] + (1.0 if r["kind"] in ("explicit", "attachment") else 0.0)
             cur = best.get(r["other"])
             if cur is None or score > cur["score"]:
                 best[r["other"]] = {"doc_id": r["other"], "kind": r["kind"], "weight": r["weight"],

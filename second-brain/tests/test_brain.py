@@ -318,3 +318,193 @@ def test_mcp_server_exposes_tools(workspace):
     server = build_server(brain)
     names = {t.name for t in asyncio.run(server.list_tools())}
     assert {"search", "ask", "remember", "related", "create_document", "create_deck", "sync", "status"} <= names
+
+
+# ---------------------------------------------------------------- email
+def _make_email(subject, body, attachments=(), sender="Marco Lindqvist <marco@acme.example>", date="Mon, 21 Sep 2026 10:00:00 +0000"):
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["From"], msg["To"], msg["Subject"], msg["Date"] = sender, "Jane Rivera <jane@firm.example>", subject, date
+    msg["Message-ID"] = f"<{abs(hash(subject))}@acme.example>"
+    msg.set_content(body)
+    for filename, data, maintype, subtype in attachments:
+        msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
+    return msg.as_bytes()
+
+
+def _docx_bytes(heading, text):
+    import io
+    d = docx.Document()
+    d.add_heading(heading, 1)
+    d.add_paragraph(text)
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+DOCX = ("application", "vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
+def test_email_files_with_attachments_and_mbox(tmp_path, monkeypatch):
+    import mailbox
+
+    mail = tmp_path / "mail"
+    mail.mkdir()
+    (mail / "budget.eml").write_bytes(_make_email(
+        "Pumps pilot budget", "Jane, the pilot budget is approved at EUR 300k. Proposal attached.",
+        [("Pilot Proposal.docx", _docx_bytes("Pilot Proposal", "Distributor pricing corridors for pumps."), *DOCX),
+         ("logo.png", b"\x89PNG....", "image", "png")]))
+    box = mailbox.mbox(str(mail / "archive.mbox"))
+    box.add(_make_email("Kickoff agenda", "Agenda: churn analysis and warehouse automation."))
+    box.add(_make_email("Minutes", "Tom agreed to join distributor interviews.",
+                        [("notes.txt", b"Interview list: Globex, Initech.", "text", "plain")]))
+    box.close()
+
+    cfg = BrainConfig(data_dir=tmp_path / "data", output_dir=tmp_path / "out",
+                      sources=[SourceConfig("mail", "folder", {"path": str(mail)})])
+    cfg.data_dir.mkdir()
+    cfg.output_dir.mkdir()
+    brain = Brain(cfg, llm=OfflineLLM())
+    stats = brain.sync("mail")[0]
+    assert stats.errors == [] and stats.added == 5          # 3 emails + docx + txt (the png is skipped)
+
+    email_doc = brain.store.find_by_title("Pumps pilot budget")
+    assert email_doc.kind == "email" and "Attachments: Pilot Proposal.docx, logo.png" in email_doc.text
+    hit = brain.search("distributor pricing corridors")[0]
+    assert hit.title == "Pilot Proposal"                    # text inside the attachment is searchable
+    rel = {n["title"]: n["kind"] for n in brain.related(email_doc.id)}
+    assert rel["Pilot Proposal"] == "attachment"            # attachment linked to its email
+    assert brain.search("Globex Initech")[0].title == "notes"
+
+    # Unchanged mail files are not re-parsed on the next sync.
+    import secondbrain.connectors.local as local
+    monkeypatch.setattr(local, "parse_file_bytes", lambda *a: (_ for _ in ()).throw(AssertionError("re-parsed")))
+    monkeypatch.setattr(local, "iter_mbox", lambda *a: (_ for _ in ()).throw(AssertionError("re-parsed")))
+    again = brain.sync("mail")[0]
+    assert again.unchanged == 5 and again.removed == 0 and again.errors == []
+
+
+def test_outlook_msg_without_library_is_a_file_error(tmp_path):
+    mail = tmp_path / "mail"
+    mail.mkdir()
+    (mail / "note.msg").write_bytes(b"\xd0\xcf\x11\xe0 not really")
+    (mail / "ok.eml").write_bytes(_make_email("Fine", "All good"))
+    cfg = BrainConfig(data_dir=tmp_path / "data", output_dir=tmp_path / "out",
+                      sources=[SourceConfig("mail", "folder", {"path": str(mail)})])
+    cfg.data_dir.mkdir()
+    cfg.output_dir.mkdir()
+    stats = Brain(cfg, llm=OfflineLLM()).sync("mail")[0]
+    assert stats.added == 1 and len(stats.errors) == 1       # one bad file never stops the rest
+
+
+class FakeIMAP:
+    """Just enough of imaplib.IMAP4_SSL for the connector."""
+    mailbox: dict[str, dict[int, bytes]] = {}
+    fetches: list[str] = []
+    logins: list[tuple] = []
+
+    def __init__(self, host, port, timeout=None):
+        assert timeout  # never hang on an unreachable server
+        self.host, self.selected = host, None
+
+    def login(self, user, password):
+        FakeIMAP.logins.append((user, password))
+        return "OK", [b"logged in"]
+
+    def select(self, folder, readonly=False):
+        assert readonly
+        self.selected = folder.strip('"')
+        return ("OK", [b"1"]) if self.selected in self.mailbox else ("NO", [b"no such folder"])
+
+    def response(self, code):
+        return code, [b"777"]
+
+    def uid(self, command, *args):
+        if command == "SEARCH":
+            assert args[1].startswith("SINCE ")
+            return "OK", [b" ".join(str(u).encode() for u in sorted(self.mailbox[self.selected]))]
+        uid, spec = args
+        assert spec == "(BODY.PEEK[])"                      # never marks mail as read
+        FakeIMAP.fetches.append(uid)
+        return "OK", [(b"1 (UID %s BODY[] {n}" % uid.encode(), self.mailbox[self.selected][int(uid)]), b")"]
+
+    def logout(self):
+        return "BYE", []
+
+
+def test_imap_mailbox_sync(tmp_path, monkeypatch):
+    import imaplib
+
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", FakeIMAP)
+    monkeypatch.setenv("TEST_MAIL_PW", "app-password")
+    FakeIMAP.mailbox = {"INBOX": {
+        1: _make_email("SOW signed", "Acme signed the statement of work.",
+                       [("SOW.docx", _docx_bytes("Statement of Work", "Phase 1 pricing diagnostic, 8 weeks."), *DOCX)]),
+        2: _make_email("Lunch?", "Are you free Thursday?", sender="Tom <tom@acme.example>"),
+    }}
+    FakeIMAP.fetches, FakeIMAP.logins = [], []
+    from secondbrain.config import expand_env
+    cfg = BrainConfig(data_dir=tmp_path / "data", output_dir=tmp_path / "out", sources=[SourceConfig(
+        "work-mail", "imap", expand_env({"host": "imap.example.com", "username": "jane@firm.example",
+                                         "password": "${TEST_MAIL_PW}", "folders": ["INBOX"]}))])
+    cfg.data_dir.mkdir()
+    cfg.output_dir.mkdir()
+    brain = Brain(cfg, llm=OfflineLLM())
+
+    stats = brain.sync("work-mail")[0]
+    assert stats.added == 3 and stats.errors == []
+    assert FakeIMAP.logins == [("jane@firm.example", "app-password")]
+    sow = brain.search("pricing diagnostic")[0]
+    assert sow.title == "Statement of Work"
+    email_doc = brain.store.find_by_title("SOW signed")
+    assert email_doc.kind == "email" and "From: Marco Lindqvist" in email_doc.text
+    assert sow.doc_id in {n["doc_id"] for n in brain.related(email_doc.id)}
+
+    # Second sync downloads nothing already known; a new message is picked up; deleted mail is kept.
+    FakeIMAP.fetches = []
+    del FakeIMAP.mailbox["INBOX"][2]
+    FakeIMAP.mailbox["INBOX"][3] = _make_email("Follow-up", "Next steering committee on 10 October.")
+    stats = brain.sync("work-mail")[0]
+    assert FakeIMAP.fetches == ["3"] and stats.added == 1 and stats.removed == 0
+    assert brain.store.find_by_title("Lunch?") is not None
+
+
+def test_add_mailbox_via_api_keeps_password_secret(tmp_path, monkeypatch):
+    import imaplib
+
+    class PickyIMAP(FakeIMAP):
+        def login(self, user, password):
+            if password != "right-pw":
+                raise imaplib.IMAP4.error("AUTHENTICATIONFAILED")
+            return super().login(user, password)
+
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", PickyIMAP)
+    monkeypatch.delenv("BRAIN_API_TOKEN", raising=False)
+    FakeIMAP.mailbox = {"INBOX": {1: _make_email("Hello", "First email")}}
+    cfg = BrainConfig(data_dir=tmp_path / "data", output_dir=tmp_path / "out")
+    cfg.data_dir.mkdir()
+    cfg.output_dir.mkdir()
+    cfg.config_path = tmp_path / "brain.toml"
+    cfg.config_path.write_text(f"[brain]\ndata_dir = {json.dumps(str(cfg.data_dir))}\n"
+                               f"output_dir = {json.dumps(str(cfg.output_dir))}\n", encoding="utf-8")
+    server, base = _serve(Brain(cfg, llm=OfflineLLM()))
+    try:
+        req = {"type": "imap", "name": "Personal mail", "target": "me@gmail.com", "password": "wrong"}
+        with pytest.raises(urllib.error.HTTPError) as err:
+            _call(base, "/sources", req)
+        assert "couldn't sign in to imap.gmail.com" in json.loads(err.value.read())["error"]
+        assert "Personal mail" not in cfg.config_path.read_text()
+
+        assert _call(base, "/sources", {**req, "password": "right-pw"})["syncing"]
+        status = _wait_for_sync(base)
+        assert status["stats"]["documents"] == 1
+        toml = cfg.config_path.read_text()
+        assert "right-pw" not in toml and "${MAIL_PASSWORD_PERSONAL_MAIL}" in toml
+        assert "MAIL_PASSWORD_PERSONAL_MAIL=right-pw" in (cfg.data_dir / "secrets.env").read_text()
+        mail_src = next(s for s in status["configured_sources"] if s["name"] == "Personal mail")
+        assert "password" not in mail_src and mail_src["host"] == "imap.gmail.com"
+    finally:
+        server.shutdown()
+        import os
+        os.environ.pop("MAIL_PASSWORD_PERSONAL_MAIL", None)

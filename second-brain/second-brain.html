@@ -155,7 +155,7 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
       <div id="welcome" class="card" style="display:none">
         <h3 style="margin-top:0">Welcome 👋 Let's connect your knowledge</h3>
         <div class="steps">
-          <div class="step"><b>1 · Add folders</b>Pick Documents, OneDrive, Dropbox, Google Drive or any folder, or drop files anywhere on this page.<br><a href="#" data-goto="sources">Add a folder →</a></div>
+          <div class="step"><b>1 · Add folders</b>Pick Documents, OneDrive, Dropbox, Google Drive or any folder, or drop files and email exports (.eml, .mbox) anywhere on this page.<br><a href="#" data-goto="sources">Add a folder →</a></div>
           <div class="step"><b>2 · Let it read</b>Word, PowerPoint, PDF, Excel, notes and emails are read and linked, all inside this browser.</div>
           <div class="step"><b>3 · Connect Claude</b>Paste your Anthropic API key to get written answers, documents and decks.<br><a href="#" data-goto="sources">Add key →</a></div>
           <div class="step"><b>4 · Ask &amp; create</b>Ask questions here, or produce Word briefs and PowerPoint decks on the Create tab.</div>
@@ -245,6 +245,9 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
           <button class="btn" id="addFilesBtn">📄 Add files…</button>
         </div>
         <div class="hint" id="folderHint"></div>
+        <div class="hint">📧 <b>Emails:</b> add <code>.eml</code> files or a <code>.mbox</code> mail archive. Every email and its attachments (PDF, Word, Excel, PowerPoint) become searchable and linked.
+          Gmail: <i>takeout.google.com</i> → Mail → download the .mbox. Apple Mail: Mailbox → Export Mailbox. Thunderbird / Outlook for Mac: drag emails into a folder (saves .eml).
+          Outlook for Windows saves <code>.msg</code>, which needs the Python app.</div>
         <div class="drop" id="dropZone" style="margin-top:12px">…or drag &amp; drop folders and files here (or anywhere on the page)</div>
         <input type="file" id="folderInput" webkitdirectory multiple hidden>
         <input type="file" id="filesInput" multiple hidden>
@@ -550,7 +553,7 @@ const yieldUI = () => new Promise(r => setTimeout(r, 0));
 // ---------- file parsers (mirrors secondbrain/parsers.py) ----------
 const TEXT_EXTS = new Set([".txt", ".md", ".markdown", ".rst", ".org", ".log", ".csv", ".tsv", ".yaml", ".yml", ".toml", ".ini",
   ".py", ".js", ".ts", ".java", ".go", ".rb", ".sql", ".sh", ".tex"]);
-const SUPPORTED = new Set([...TEXT_EXTS, ".html", ".htm", ".json", ".eml", ".pdf", ".docx", ".pptx", ".xlsx"]);
+const SUPPORTED = new Set([...TEXT_EXTS, ".html", ".htm", ".json", ".eml", ".mbox", ".pdf", ".docx", ".pptx", ".xlsx"]);
 const KIND_BY_EXT = { ".md": "note", ".markdown": "note", ".txt": "note", ".org": "note", ".pdf": "pdf", ".docx": "document",
   ".pptx": "presentation", ".xlsx": "spreadsheet", ".csv": "data", ".tsv": "data", ".json": "data", ".html": "web", ".htm": "web", ".eml": "email" };
 const kindFor = ext => KIND_BY_EXT[ext] || (TEXT_EXTS.has(ext) ? "code" : "file");
@@ -685,29 +688,71 @@ function htmlToText(html) {
   const text = (doc.body?.textContent || "").split("\n").map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n");
   return { text, title: doc.title?.trim() || null };
 }
-function decodeQP(s) { return s.replace(/=\r?\n/g, "").replace(/=([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16))); }
-function parseEml(raw) {
-  const [head, ...rest] = raw.split(/\r?\n\r?\n/); let body = rest.join("\n\n");
-  const headers = {}; head.replace(/\r?\n[ \t]+/g, " ").split(/\r?\n/).forEach(l => { const i = l.indexOf(":"); if (i > 0) headers[l.slice(0, i).toLowerCase()] = l.slice(i + 1).trim(); });
-  const boundary = /boundary="?([^";]+)"?/i.exec(headers["content-type"] || "")?.[1];
-  let enc = headers["content-transfer-encoding"] || "", isHtml = /text\/html/i.test(headers["content-type"] || "");
-  if (boundary) {
-    const partsArr = body.split("--" + boundary).map(p => p.trim()).filter(p => p && p !== "--");
-    const pick = partsArr.find(p => /content-type:\s*text\/plain/i.test(p)) || partsArr.find(p => /content-type:\s*text\/html/i.test(p)) || "";
-    const [ph, ...pb] = pick.split(/\r?\n\r?\n/); body = pb.join("\n\n");
-    enc = /content-transfer-encoding:\s*(\S+)/i.exec(ph)?.[1] || ""; isHtml = /text\/html/i.test(ph);
+// Emails: a small, binary-safe MIME reader (multipart, base64, quoted-printable, charsets, encoded headers).
+const EMAIL_EXTS = new Set([".eml", ".mbox"]);
+const MAX_ATTACHMENT = 25 * 1024 * 1024, MAX_MBOX = 500 * 1024 * 1024;
+const bytesToBin = u8 => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return s; };
+const binToBytes = s => { const u8 = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i) & 0xff; return u8; };
+const decodeCharset = (u8, cs) => { try { return new TextDecoder((cs || "utf-8").trim().toLowerCase()).decode(u8); } catch { return new TextDecoder().decode(u8); } };
+const b64ToBin = b => { try { return atob(b.replace(/[^A-Za-z0-9+/=]/g, "")); } catch { return ""; } };
+const qpToBin = s => s.replace(/=\r?\n/g, "").replace(/=([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+function decodeWords(v) { // =?UTF-8?B?...?= and =?ISO-8859-1?Q?...?=
+  return String(v || "").replace(/\?=\s+=\?/g, "?==?").replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (_, cs, enc, txt) =>
+    decodeCharset(binToBytes(/b/i.test(enc) ? b64ToBin(txt) : qpToBin(txt.replace(/_/g, " "))), cs));
+}
+function mimeHeaders(block) {
+  const h = {};
+  for (const line of block.replace(/\r?\n[ \t]+/g, " ").split(/\r?\n/)) { const i = line.indexOf(":"); if (i > 0) h[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim(); }
+  return h;
+}
+function headerParam(value, name) {
+  const star = new RegExp(`${name}\\*=(?:([^']*)'[^']*')?([^;]+)`, "i").exec(value || ""); // RFC 2231
+  if (star) { try { return decodeURIComponent(star[2].trim().replace(/^"|"$/g, "")); } catch { return star[2]; } }
+  const m = new RegExp(`${name}="?([^";]+)"?`, "i").exec(value || "");
+  return m ? decodeWords(m[1].trim()) : null;
+}
+function mimeLeaves(bin, out = []) { // flatten a message into its leaf parts
+  const cut = bin.search(/\r?\n\r?\n/);
+  const headers = mimeHeaders(cut < 0 ? bin : bin.slice(0, cut));
+  const body = cut < 0 ? "" : bin.slice(cut).replace(/^\r?\n\r?\n/, "");
+  const type = (headers["content-type"] || "text/plain").split(";")[0].trim().toLowerCase();
+  const boundary = headerParam(headers["content-type"], "boundary");
+  if (type.startsWith("multipart/") && boundary) {
+    const parts = body.split("--" + boundary);
+    for (const part of parts.slice(1)) { if (part.startsWith("--")) break; mimeLeaves(part.replace(/^\r?\n/, ""), out); }
+  } else out.push({ headers, type, body });
+  return out;
+}
+function leafBytes(leaf) {
+  const enc = (leaf.headers["content-transfer-encoding"] || "").toLowerCase();
+  return binToBytes(enc === "base64" ? b64ToBin(leaf.body) : enc === "quoted-printable" ? qpToBin(leaf.body) : leaf.body);
+}
+function parseEmailBin(bin) {
+  const top = mimeHeaders(bin.slice(0, Math.max(0, bin.search(/\r?\n\r?\n/))) || bin);
+  let plain = null, html = null; const attachments = [];
+  for (const leaf of mimeLeaves(bin)) {
+    const disp = leaf.headers["content-disposition"] || "";
+    const filename = headerParam(disp, "filename") || headerParam(leaf.headers["content-type"], "name");
+    if (filename && (/attachment/i.test(disp) || !/^text\/(plain|html)$/.test(leaf.type))) {
+      const data = leafBytes(leaf);
+      if (data.length && data.length <= MAX_ATTACHMENT) attachments.push({ filename: filename.replace(/[\\/:*?"<>|\r\n]+/g, "_").slice(0, 150), data });
+    } else if (leaf.type === "text/plain" && plain === null) plain = decodeCharset(leafBytes(leaf), headerParam(leaf.headers["content-type"], "charset"));
+    else if (leaf.type === "text/html" && html === null) html = decodeCharset(leafBytes(leaf), headerParam(leaf.headers["content-type"], "charset"));
   }
-  if (/base64/i.test(enc)) { try { body = new TextDecoder().decode(Uint8Array.from(atob(body.replace(/\s+/g, "")), c => c.charCodeAt(0))); } catch {} }
-  else if (/quoted-printable/i.test(enc)) body = decodeQP(body);
-  if (isHtml) body = htmlToText(body).text;
-  const header = `From: ${headers.from || ""}\nTo: ${headers.to || ""}\nDate: ${headers.date || ""}\nSubject: ${headers.subject || ""}\n\n`;
-  return { text: header + body, title: headers.subject || null };
+  const subject = decodeWords(top.subject) || "(no subject)";
+  const lines = [`# ${subject}`, "", `From: ${decodeWords(top.from)}`, `To: ${decodeWords(top.to)}`, `Date: ${top.date || ""}`];
+  if (attachments.length) lines.push("Attachments: " + attachments.map(a => a.filename).join(", "));
+  const body = plain ?? (html ? htmlToText(html).text : "");
+  return { subject, text: lines.join("\n") + "\n\n" + body.trim(), attachments };
+}
+function splitMbox(bin) { // "From " separator lines; ">From " escaping undone
+  return bin.split(/(?:^|\r?\n)From [^\r\n]*\r?\n/).filter(m => m.trim()).map(m => m.replace(/^>(>*From )/gm, "$1"));
 }
 async function parseFile(buf, ext) {
   if (TEXT_EXTS.has(ext)) return { text: decodeText(buf), title: null };
   if (ext === ".html" || ext === ".htm") return htmlToText(decodeText(buf));
   if (ext === ".json") { const s = decodeText(buf); try { return { text: JSON.stringify(JSON.parse(s), null, 1), title: null }; } catch { return { text: s, title: null }; } }
-  if (ext === ".eml") return parseEml(decodeText(buf));
+  if (ext === ".eml") { const e = parseEmailBin(bytesToBin(new Uint8Array(buf))); return { text: e.text, title: e.subject }; }
   if (ext === ".docx") return parseDocx(buf);
   if (ext === ".pptx") return parsePptx(buf);
   if (ext === ".xlsx") return parseXlsx(buf);
@@ -942,10 +987,15 @@ const Brain = {
   // items: [{uri, relPath, name, modified, size, getFile: () => Promise<File>}]
   async ingest(sourceName, items, { full }) {
     const stats = { source: sourceName, seen: 0, added: 0, updated: 0, unchanged: 0, removed: 0, errors: [] };
-    const seen = new Set(), changed = [];
+    const seen = new Set(), changed = [], attachmentLinks = new Map();
     for (const item of items) {
       stats.seen++; seen.add(item.uri);
       const ext = extOf(item.name);
+      if (EMAIL_EXTS.has(ext)) {
+        try { await this.ingestEmailFile(sourceName, item, ext, { stats, seen, changed, attachmentLinks }); }
+        catch (e) { stats.errors.push(`${item.relPath}: ${e.message || e}`); }
+        continue;
+      }
       const existing = this.byUri(item.uri);
       if (existing && existing.modified === item.modified) { stats.unchanged++; continue; }
       try {
@@ -962,10 +1012,47 @@ const Brain = {
     }
     if (full) for (const d of [...this.docs.values()]) if (d.source === sourceName && !seen.has(d.uri)) { this.remove(d.id); stats.removed++; }
     this.relink(changed);
+    for (const [msgId, attIds] of attachmentLinks) this.replaceLinks(msgId, "attachment", attIds.map(a => [a, 1, "attachment"]));
     const src = this.sources.find(s => s.name === sourceName);
     if (src) { src.lastSync = Date.now() / 1000; src.lastStats = stats; }
     await this.save();
     return stats;
+  },
+
+  // One .eml / .mbox file -> a document per email + a document per readable attachment, linked together.
+  async ingestEmailFile(sourceName, item, ext, { stats, seen, changed, attachmentLinks }) {
+    const base = item.uri, first = this.byUri(ext === ".mbox" ? base + "#msg0" : base);
+    if (first && first.modified === item.modified) { // unchanged: keep everything, parse nothing
+      for (const d of this.docs.values()) if (d.uri === base || d.uri.startsWith(base + "#")) seen.add(d.uri);
+      stats.unchanged++; return;
+    }
+    const file = await item.getFile();
+    if (file.size > (ext === ".mbox" ? MAX_MBOX : MAX_BYTES)) throw new Error(`too large (${Math.round(file.size / 2 ** 20)} MB)`);
+    const bin = bytesToBin(new Uint8Array(await file.arrayBuffer()));
+    const messages = ext === ".mbox" ? splitMbox(bin) : [bin];
+    for (const [i, raw] of messages.entries()) {
+      const email = parseEmailBin(raw), msgUri = ext === ".mbox" ? `${base}#msg${i}` : base;
+      const [msgId, outcome] = this.upsert({ source: sourceName, uri: msgUri, title: email.subject, kind: "email", modified: item.modified, text: email.text });
+      seen.add(msgUri); this.docs.get(msgId).relPath = item.relPath;
+      if (ext === ".eml" && item.file) this.sessionFiles.set(msgId, item.file);
+      stats[outcome]++; if (outcome !== "unchanged") changed.push(msgId);
+      const attIds = [];
+      for (const [j, att] of email.attachments.entries()) {
+        const aext = extOf(att.filename);
+        if (!SUPPORTED.has(aext) || aext === ".mbox") continue;
+        const attUri = `${msgUri}#att${j}-${att.filename}`;
+        try {
+          const parsed = aext === ".eml" ? parseEmailBin(bytesToBin(att.data)) : await parseFile(att.data.buffer.slice(att.data.byteOffset, att.data.byteOffset + att.data.length), aext);
+          const [attId, aout] = this.upsert({ source: sourceName, uri: attUri, title: (aext === ".eml" ? parsed.subject : parsed.title) || stemOf(att.filename),
+                                              kind: kindFor(aext), modified: item.modified, text: parsed.text });
+          seen.add(attUri); attIds.push(attId); this.docs.get(attId).attachmentName = att.filename;
+          await DB.set("att:" + attUri, new Blob([att.data]));
+          stats[aout]++; if (aout !== "unchanged") changed.push(attId);
+        } catch (e) { stats.errors.push(`${item.relPath} → ${att.filename}: ${e.message || e}`); }
+      }
+      if (attIds.length) attachmentLinks.set(msgId, attIds);
+      if (i % 25 === 24) { this.sync.progress = `${sourceName}: ${i + 1} of ${messages.length} emails read`; await yieldUI(); }
+    }
   },
 
   // --- folder access ---
@@ -1105,7 +1192,7 @@ const Brain = {
     const best = new Map();
     for (const l of this.links) {
       const other = l.src === id ? l.dst : l.dst === id ? l.src : null; if (other == null) continue;
-      const score = l.weight + (l.kind === "explicit" ? 1 : 0);
+      const score = l.weight + (l.kind === "explicit" || l.kind === "attachment" ? 1 : 0);
       if (!best.has(other) || score > best.get(other).score) best.set(other, { doc_id: other, kind: l.kind, weight: l.weight, label: l.label, score });
     }
     return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit)
@@ -1241,6 +1328,7 @@ const Brain = {
     const d = this.docs.get(id); if (!d) return null;
     if (this.sessionFiles.has(id)) return URL.createObjectURL(this.sessionFiles.get(id));
     if (d.outputName) { const blob = await DB.get("output:" + d.outputName); if (blob) return URL.createObjectURL(new File([blob], d.outputName, { type: blob.type })); }
+    if (d.attachmentName) { const blob = await DB.get("att:" + d.uri); if (blob) return URL.createObjectURL(new File([blob], d.attachmentName)); }
     const h = this.handles.get(d.source);
     if (h && d.relPath && this.permission.get(d.source) === "granted") {
       try { let cur = h; const parts = d.relPath.split("/"); for (const p of parts.slice(0, -1)) cur = await cur.getDirectoryHandle(p);
@@ -1352,7 +1440,7 @@ async function openDoc(id) {
   id = +id; const d = Brain.docs.get(id); if (!d) return;
   $("#dTitle").textContent = kindIcon(d.kind) + " " + d.title;
   const related = Brain.neighbours(id, 10);
-  const rel = related.length ? related.map(r => `<div class="rel" data-doc="${r.doc_id}"><span class="pill ${r.kind === "explicit" ? "accent" : ""}">${r.kind === "explicit" ? "link" : r.kind === "related" ? "similar" : "shared"}</span><span class="t">${esc(r.title)}</span><span class="muted small">${esc(r.label || "")}</span></div>`).join("") : '<p class="muted small">No connections yet.</p>';
+  const rel = related.length ? related.map(r => `<div class="rel" data-doc="${r.doc_id}"><span class="pill ${r.kind === "explicit" || r.kind === "attachment" ? "accent" : ""}">${r.kind === "explicit" ? "link" : r.kind === "attachment" ? "attachment" : r.kind === "related" ? "similar" : "shared"}</span><span class="t">${esc(r.title)}</span><span class="muted small">${esc(r.label || "")}</span></div>`).join("") : '<p class="muted small">No connections yet.</p>';
   $("#dBody").innerHTML = `
     <div class="row small muted" style="margin-bottom:10px"><span class="pill">${esc(d.kind)}</span><span class="pill">${esc(d.source)}</span><span>indexed ${ago(d.indexedAt)}</span>${d.revisions?.length ? `<span>· ${d.revisions.length} earlier version(s)</span>` : ""}</div>
     <div class="row" style="margin-bottom:14px"><button class="btn small" id="dOpen">Open original</button><button class="btn small" id="dAsk">Ask about this</button></div>
@@ -1365,7 +1453,8 @@ async function openDoc(id) {
   $("#dOpen").onclick = async () => {
     const url = await Brain.openOriginal(id);
     if (!url) { toast(Brain.handles.has(d.source) ? "Click “Reconnect folders” first so the browser can read the file" : "The original isn't available in this session. Open it from its folder, or re-add the folder"); return; }
-    if (d.outputName) { const a = document.createElement("a"); a.href = url; a.download = d.outputName; a.click(); } else window.open(url, "_blank");
+    const saveAs = d.outputName || d.attachmentName;
+    if (saveAs) { const a = document.createElement("a"); a.href = url; a.download = saveAs; a.click(); } else window.open(url, "_blank");
   };
   $("#drawer").classList.add("open");
 }
@@ -1547,7 +1636,7 @@ function loadGraph() {
   const kinds = new Set($$(".ekind").filter(c => c.checked).map(c => c.value));
   const cv = $("#graph"), W = cv.clientWidth, H = cv.clientHeight;
   const docs = [...Brain.docs.values()], sources = [...new Set(docs.map(d => d.source))];
-  const edges = Brain.links.filter(e => kinds.has(e.kind)), degree = {};
+  const edges = Brain.links.filter(e => kinds.has(e.kind === "attachment" ? "explicit" : e.kind)), degree = {};
   edges.forEach(e => { degree[e.src] = (degree[e.src] || 0) + 1; degree[e.dst] = (degree[e.dst] || 0) + 1; });
   let nodes = docs; if (nodes.length > 600) nodes = nodes.filter(n => degree[n.id]).slice(0, 600);
   const idx = new Map();
@@ -1578,7 +1667,7 @@ function tick() {
   const ec = { explicit: css.getPropertyValue("--e-explicit").trim(), related: css.getPropertyValue("--e-related").trim(), entity: css.getPropertyValue("--e-entity").trim() };
   const textColor = css.getPropertyValue("--text").trim();
   for (const e of G.edges) { const p = N[e.a], q = N[e.b]; const hot = G.hover && (p === G.hover || q === G.hover);
-    ctx.strokeStyle = ec[e.kind]; ctx.globalAlpha = hot ? 1 : G.hover ? 0.12 : 0.55; ctx.lineWidth = (e.kind === "explicit" ? 1.8 : 1) / G.scale;
+    ctx.strokeStyle = ec[e.kind] || ec.explicit; ctx.globalAlpha = hot ? 1 : G.hover ? 0.12 : 0.55; ctx.lineWidth = (e.kind === "explicit" ? 1.8 : 1) / G.scale;
     ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); }
   ctx.globalAlpha = 1; ctx.font = `${12 / G.scale}px system-ui`;
   for (const n of N) { const r = 4 + Math.min(10, Math.sqrt(n.deg) * 2);

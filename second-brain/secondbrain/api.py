@@ -36,6 +36,14 @@ from .brain import Brain
 from .config import DEFAULT_HOME, append_source, load_config, remove_source, save_secret
 
 UI_FILE = Path(__file__).parent / "ui" / "index.html"
+SECRET_OPTIONS = {"headers", "password", "oauth2_token", "credentials"}  # never sent to the browser
+
+MAIL_SERVERS = {  # sensible IMAP defaults by email domain
+    "gmail.com": "imap.gmail.com", "googlemail.com": "imap.gmail.com",
+    "icloud.com": "imap.mail.me.com", "me.com": "imap.mail.me.com", "mac.com": "imap.mail.me.com",
+    "yahoo.com": "imap.mail.yahoo.com", "fastmail.com": "imap.fastmail.com", "zoho.com": "imap.zoho.com",
+    "outlook.com": "outlook.office365.com", "hotmail.com": "outlook.office365.com", "live.com": "outlook.office365.com",
+}
 
 
 def claude_configured() -> bool:
@@ -100,7 +108,7 @@ class BrainService:
         out["claude_configured"] = claude_configured()
         out["config_file"] = str(self.config_file())
         out["configured_sources"] = [
-            {"name": s.name, "type": s.type, **{k: v for k, v in s.options.items() if k != "headers"}}
+            {"name": s.name, "type": s.type, **{k: v for k, v in s.options.items() if k not in SECRET_OPTIONS}}
             for s in self.brain.config.all_sources()]
         return out
 
@@ -258,6 +266,30 @@ def make_handler(service: BrainService, token: str | None):
             result["download"] = "/outputs/" + quote(Path(result["path"]).name)
             return result
 
+        def _mail_options(self, name: str, address: str, body: dict[str, Any]) -> dict[str, Any]:
+            from .connectors.imap import ImapConnector
+
+            if "@" not in address:
+                raise ValueError("enter the full email address")
+            host = (body.get("host") or "").strip() or MAIL_SERVERS.get(address.split("@")[1].lower(), "")
+            if not host:
+                raise ValueError("enter the IMAP server of your email provider (e.g. imap.example.com)")
+            password = (body.get("password") or "").strip()
+            if not password:
+                raise ValueError("enter an app password for this mailbox")
+            folders = [f.strip() for f in str(body.get("folders") or "INBOX").split(",") if f.strip()]
+            options: dict[str, Any] = {"host": host, "username": address, "folders": folders,
+                                       "since_days": int(body.get("since_days") or 365)}
+            probe = ImapConnector(name, {**options, "password": password, "timeout": 10})
+            try:  # check the sign-in before saving anything
+                probe._connect().logout()
+            except Exception as exc:
+                raise ValueError(f"couldn't sign in to {host}: {exc}. Check the address and app password.") from exc
+            secret = "MAIL_PASSWORD_" + re.sub(r"[^A-Z0-9]+", "_", name.upper()).strip("_")
+            save_secret(self.brain.config.data_dir, secret, password)
+            options["password"] = "${" + secret + "}"
+            return options
+
         def _add_source(self, body: dict[str, Any]) -> dict[str, Any]:
             type_, name, target = body["type"], body["name"].strip(), body["target"].strip()
             if not re.fullmatch(r"[A-Za-z0-9 _.\-]{1,60}", name):
@@ -276,6 +308,8 @@ def make_handler(service: BrainService, token: str | None):
                            "credentials": body.get("credentials") or str(DEFAULT_HOME / "gdrive-sa.json")}
             elif type_ == "http_json":
                 options = {"url": target}
+            elif type_ == "imap":
+                options = self._mail_options(name, target, body)
             else:
                 raise ValueError(f"unknown source type {type_!r}")
             config_file = service.config_file()

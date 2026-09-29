@@ -37,10 +37,12 @@ def index_item(store: Store, source: str, item: Item, text: str | None = None) -
     if (text is None and existing is not None and item.modified is not None
             and existing.modified == item.modified and store.get(existing.id) is not None):
         return existing.id, "unchanged"
+    title_hint = None
+    if text is None:
+        text = item.text
+        title_hint = item.title if item.text is not None else None
     if text is None:
         text, title_hint = parse(item.load(), item.ext)
-    else:
-        title_hint = None
     text = text.strip()
     title = title_hint or title_from_text(text) or item.title
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -70,8 +72,10 @@ def sync_source(store: Store, source: SourceConfig,
     stats = SyncStats(source.name)
     connector = build_connector(source)
     known = store.uris_for_source(source.name)
+    connector.known = store.modified_for_source(source.name)  # lets connectors skip re-downloading
     seen: set[str] = set()
     changed: list[int] = []
+    children: dict[str, list[int]] = {}  # parent uri -> changed attachment doc ids
     try:
         for item in connector.items():
             stats.seen += 1
@@ -85,6 +89,8 @@ def sync_source(store: Store, source: SourceConfig,
             setattr(stats, outcome, getattr(stats, outcome) + 1)
             if outcome != "unchanged":
                 changed.append(doc_id)
+                if item.parent_uri:
+                    children.setdefault(item.parent_uri, []).append(doc_id)
             if stats.seen % 25 == 0:
                 store.commit()  # keep write transactions short so readers and `remember` aren't blocked
                 if on_progress:
@@ -95,10 +101,15 @@ def sync_source(store: Store, source: SourceConfig,
         store.commit()
         store.record_sync(source.name, source.type, stats.as_dict())
         return stats
-    for uri, doc_id in known.items():
-        if uri not in seen:
-            store.mark_deleted(doc_id)
-            stats.removed += 1
+    if getattr(connector, "prune", True):
+        for uri, doc_id in known.items():
+            if uri not in seen:
+                store.mark_deleted(doc_id)
+                stats.removed += 1
+    for parent_uri, child_ids in children.items():
+        parent = store.get_by_uri(parent_uri)
+        if parent:
+            store.replace_links(parent.id, "attachment", [(c, 1.0, "attachment") for c in child_ids])
     store.commit()
     refresh_links(store, changed)
     store.record_sync(source.name, source.type, stats.as_dict())

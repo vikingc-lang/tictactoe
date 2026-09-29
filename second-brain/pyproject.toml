@@ -19,6 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 excel = ["openpyxl"]
 gdrive = ["google-api-python-client", "google-auth"]
+outlook = ["extract-msg"]
 dev = ["pytest"]
 
 [project.scripts]

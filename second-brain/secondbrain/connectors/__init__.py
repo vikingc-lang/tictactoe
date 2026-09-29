@@ -22,6 +22,8 @@ class Item:
     ext: str                      # file extension used to pick a parser, e.g. ".pdf"
     modified: float | None        # change marker; None means "always check the content hash"
     load: Callable[[], bytes]
+    text: str | None = None       # already-extracted text (skips the file parser)
+    parent_uri: str | None = None  # e.g. the email an attachment came with
 
 
 class Connector(Protocol):
@@ -29,10 +31,16 @@ class Connector(Protocol):
 
     def items(self) -> Iterator[Item]: ...
 
+    # Optional hooks the indexer sets/reads:
+    #   known: dict[str, float | None]  - uri -> stored change marker, so a connector can skip
+    #                                      re-downloading things it already delivered (e.g. emails)
+    #   prune: bool                      - False keeps documents that disappear from the source
+
 
 def build_connector(source: SourceConfig) -> Connector:
     from .gdrive import GoogleDriveConnector
     from .http_json import HttpJsonConnector
+    from .imap import ImapConnector
     from .local import FolderConnector
     from .web import WebConnector
 
@@ -41,6 +49,7 @@ def build_connector(source: SourceConfig) -> Connector:
         "gdrive": GoogleDriveConnector,
         "web": WebConnector,
         "http_json": HttpJsonConnector,
+        "imap": ImapConnector,
     }
     if source.type not in registry:
         raise ValueError(f"unknown source type '{source.type}' (known: {', '.join(sorted(registry))})")

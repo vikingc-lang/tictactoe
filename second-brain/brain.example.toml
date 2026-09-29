@@ -33,6 +33,24 @@ path = "~/Documents/Notes"                # Obsidian vaults work great ([[wikili
 # path = "~/OneDrive - Contoso/Clients"
 # include = ["*.docx", "*.pptx", "*.pdf", "*.xlsx", "*.md"]
 
+# ---------------------------------------------------------------- email (with attachments)
+# Each email becomes a document, and each PDF/Word/Excel/PowerPoint attachment becomes its own
+# document linked to it. Mail is read-only (nothing is marked as read) and downloaded once.
+# Easiest: add it from the app (Sources & settings -> Email mailbox), which stores the password safely.
+# [[sources]]
+# name = "gmail"
+# type = "imap"
+# host = "imap.gmail.com"                 # iCloud: imap.mail.me.com · Yahoo: imap.mail.yahoo.com
+# username = "you@gmail.com"
+# password = "${MAIL_PASSWORD_GMAIL}"     # an APP password (myaccount.google.com/apppasswords)
+# folders = ["INBOX", "[Gmail]/Sent Mail"]
+# since_days = 365
+# search = 'FROM "acme.com"'              # optional: only mail matching an IMAP search
+# attachments = true
+#
+# Saved emails also work in any folder source: .eml files, .mbox archives (Gmail Takeout,
+# Apple Mail, Thunderbird) and Outlook .msg files (pip install "secondbrain[outlook]").
+
 # ---------------------------------------------------------------- Google Drive via API (no sync client)
 # pip install "secondbrain[gdrive]"; share the folder with the service account's email.
 # [[sources]]

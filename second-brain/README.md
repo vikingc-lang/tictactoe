@@ -20,6 +20,7 @@ and slide decks from what you know, using Claude.
 |---|---|
 | **Stores everything** | One SQLite file (`brain.db`) holds text, chunks, full-text index, links and revision history. It works offline, is portable, and you back it up by copying one file. |
 | **Reads many formats** | Markdown/text, PDF, Word, PowerPoint, Excel (optional), HTML, CSV/JSON, email (`.eml`), code. |
+| **Reads your email** | Connect a mailbox (Gmail, iCloud, Yahoo, Fastmail or any IMAP server), or drop in saved emails (`.eml`, Outlook `.msg`, `.mbox` archives). Every email becomes a document, and every PDF, Word, Excel or PowerPoint attachment becomes its own document linked back to its email. Mail is read-only: nothing is marked as read, and each message downloads once. |
 | **Connects online + offline places** | Local and external drives; any cloud with a desktop sync client (OneDrive, SharePoint, Dropbox, Google Drive, iCloud, Box); Google Drive via API; web pages and online PDFs; **any JSON REST API** set up in config, no code needed. |
 | **Connects the knowledge** | Three edge types: **explicit** (`[[wikilinks]]`, markdown links), **related** (TF-IDF topic similarity), **entity** (the same people, companies or projects, found by Claude). |
 | **Keeps learning** | `brain watch` syncs continuously. Changed files are re-indexed and the old version is kept as a revision. Deleted files are forgotten. An unplugged drive never wipes knowledge. `remember` captures facts from chat. Generated artifacts are indexed too, so the brain builds on its own work. |
@@ -66,6 +67,7 @@ pip install -e ".[excel]"            # add ,gdrive for the Google Drive API conn
 brain init                            # writes ~/.secondbrain/brain.toml from brain.example.toml
 brain add folder notes ~/Documents/Notes
 brain add folder clients "~/OneDrive - Contoso/Clients"
+brain add imap gmail you@gmail.com --folders "INBOX,[Gmail]/Sent Mail"   # asks for an app password
 brain sync                            # first full index; later syncs only touch changes
 
 export ANTHROPIC_API_KEY=sk-ant-...   # or: ant auth login

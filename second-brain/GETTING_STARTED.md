@@ -11,8 +11,10 @@ The brain reads them but never moves or changes them.
    there keep updating automatically.
 3. Go to **🔌 Sources & settings → 📁 Add a folder…**, pick a folder (Documents, OneDrive, Dropbox, Google
    Drive, and so on), and allow the browser to view it. You can also drag files onto the page.
-4. Paste your Claude API key under **Claude connection** to get written answers, documents and decks.
-5. Use Ask, Search, Library, Connections, Create and Remember.
+4. Emails: drop `.eml` files or a `.mbox` archive (Gmail → takeout.google.com → Mail) onto the page. Each
+   email and its attachments become searchable and linked.
+5. Paste your Claude API key under **Claude connection** to get written answers, documents and decks.
+6. Use Ask, Search, Library, Connections, Create and Remember.
 
 Your brain is saved inside that browser. Open the **same file in the same browser** to find it again. When you
 reopen it, click **Reconnect folders** if asked, so the browser can re-read your folders and pick up changes.
@@ -85,6 +87,29 @@ and after that only changes are processed. Repeat for each place your knowledge 
 
 **Start focused.** Begin with one or two folders you actually use, such as current clients and your
 playbooks. You get better answers from good material than from everything at once.
+
+## 4b. Connect your email (optional)
+
+Each email becomes searchable, and **each attachment becomes its own document** (PDF, Word, Excel,
+PowerPoint), linked back to the email it came with. Nothing is marked as read, and nothing is sent or deleted.
+
+**In the app:** go to **Sources & settings → Add a source → Email mailbox**, then enter your email address
+and an **app password**. The server and folders are filled in for Gmail, iCloud and Yahoo. The app checks
+the sign-in before saving, and the password is stored only on your computer.
+
+| Provider | Where to create an app password |
+|---|---|
+| Gmail | myaccount.google.com/apppasswords (2-step verification must be on). Use folders `INBOX, [Gmail]/Sent Mail`. |
+| iCloud | appleid.apple.com → Sign-In and Security → App-Specific Passwords |
+| Yahoo | Account security → Generate app password |
+| Outlook / Microsoft 365 | Most company accounts block password sign-in, so save the emails you care about into a folder (drag them out of Outlook, or use *Save As*) and add that folder. For Outlook `.msg` files, run `pip install extract-msg` once. |
+
+**Saved emails and archives also work** in any folder you add: `.eml` files, Outlook `.msg` files, and
+`.mbox` archives. For example, download your whole Gmail from takeout.google.com → Mail and drop the
+`.mbox` into a folder.
+
+**Tip:** start with a year of mail (the default *Days back* is 365), or narrow it to a client with a
+search such as `FROM "acme.com"` in `brain.toml`.
 
 ## 5. Connect Claude (for written answers, documents and decks)
 

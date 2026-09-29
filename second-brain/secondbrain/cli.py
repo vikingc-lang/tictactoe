@@ -49,6 +49,20 @@ def cmd_add(args) -> None:
         options["credentials"] = args.credentials or str(DEFAULT_HOME / "gdrive-sa.json")
     elif args.type == "http_json":
         options["url"] = args.target
+    elif args.type == "imap":
+        import getpass
+        import re
+
+        from .api import MAIL_SERVERS
+        from .config import load_config, save_secret
+
+        host = args.host or MAIL_SERVERS.get(args.target.split("@")[-1].lower())
+        if not host:
+            sys.exit("pass --host with your provider's IMAP server")
+        secret = "MAIL_PASSWORD_" + re.sub(r"[^A-Z0-9]+", "_", args.name.upper()).strip("_")
+        save_secret(load_config(args.config).data_dir, secret, getpass.getpass(f"App password for {args.target}: "))
+        options.update(host=host, username=args.target, password="${" + secret + "}",
+                       folders=[f.strip() for f in args.folders.split(",")], since_days=args.since_days)
     append_source(path, args.name, args.type, **options)
     print(f"added source '{args.name}' to {path}")
 
@@ -158,10 +172,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("init", help="create a starter brain.toml").set_defaults(fn=cmd_init)
 
     a = sub.add_parser("add", help="connect a new source")
-    a.add_argument("type", choices=["folder", "web", "gdrive", "http_json"])
+    a.add_argument("type", choices=["folder", "imap", "web", "gdrive", "http_json"])
     a.add_argument("name")
-    a.add_argument("target", help="folder path, URL, or Drive folder id")
+    a.add_argument("target", help="folder path, email address (imap), URL, or Drive folder id")
     a.add_argument("--credentials", help="service-account JSON for gdrive")
+    a.add_argument("--host", help="IMAP server (auto for Gmail, iCloud, Yahoo, Fastmail, Zoho)")
+    a.add_argument("--folders", default="INBOX", help="IMAP folders, comma separated")
+    a.add_argument("--since-days", type=int, default=365, help="how far back to read email")
     a.set_defaults(fn=cmd_add)
 
     s = sub.add_parser("sync", help="index new/changed content from sources")

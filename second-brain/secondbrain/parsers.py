@@ -1,28 +1,27 @@
 """Turn raw bytes of many file formats into plain text.
 
-Supported out of the box: text/markdown/code, HTML, CSV/JSON, email (.eml),
+Supported out of the box: text/markdown/code, HTML, CSV/JSON, email (.eml; Outlook .msg with extract-msg),
 PDF, Word (.docx), PowerPoint (.pptx) and, if ``openpyxl`` is installed, Excel (.xlsx).
 """
 
 from __future__ import annotations
 
-import email
 import io
 import json
-from email import policy
 from html.parser import HTMLParser
 
 TEXT_EXTS = {
     ".txt", ".md", ".markdown", ".rst", ".org", ".log", ".csv", ".tsv", ".yaml", ".yml", ".toml",
     ".ini", ".py", ".js", ".ts", ".java", ".go", ".rb", ".sql", ".sh", ".tex",
 }
-RICH_EXTS = {".html", ".htm", ".json", ".eml", ".pdf", ".docx", ".pptx", ".xlsx"}
+RICH_EXTS = {".html", ".htm", ".json", ".eml", ".msg", ".mbox", ".pdf", ".docx", ".pptx", ".xlsx"}
+EMAIL_EXTS = {".eml", ".msg", ".mbox"}
 SUPPORTED_EXTS = TEXT_EXTS | RICH_EXTS
 
 KIND_BY_EXT = {
     ".md": "note", ".markdown": "note", ".txt": "note", ".org": "note",
     ".pdf": "pdf", ".docx": "document", ".pptx": "presentation", ".xlsx": "spreadsheet",
-    ".csv": "data", ".tsv": "data", ".json": "data", ".html": "web", ".htm": "web", ".eml": "email",
+    ".csv": "data", ".tsv": "data", ".json": "data", ".html": "web", ".htm": "web", ".eml": "email", ".msg": "email",
 }
 
 
@@ -95,14 +94,11 @@ def parse(data: bytes, ext: str) -> tuple[str, str | None]:
             return json.dumps(json.loads(_decode(data)), indent=1, ensure_ascii=False), None
         except json.JSONDecodeError:
             return _decode(data), None
-    if ext == ".eml":
-        msg = email.message_from_bytes(data, policy=policy.default)
-        body = msg.get_body(preferencelist=("plain", "html"))
-        content = body.get_content() if body else ""
-        if body and body.get_content_type() == "text/html":
-            content = html_to_text(content)[1]
-        header = f"From: {msg['from']}\nTo: {msg['to']}\nDate: {msg['date']}\nSubject: {msg['subject']}\n\n"
-        return header + content, msg["subject"]
+    if ext in {".eml", ".msg"}:
+        from .emails import parse_file_bytes
+
+        parsed = parse_file_bytes(data, ext)
+        return parsed.as_text(), parsed.subject or None
     if ext == ".pdf":
         from pypdf import PdfReader
 

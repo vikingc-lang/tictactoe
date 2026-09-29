@@ -237,12 +237,19 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
           <div style="width:220px"><label>Type</label>
             <select id="srcType">
               <option value="folder">Folder on this computer</option>
+              <option value="imap">Email mailbox (Gmail, iCloud, Yahoo…)</option>
               <option value="web">Web pages / online PDFs</option>
               <option value="http_json">JSON API</option>
               <option value="gdrive">Google Drive (API)</option>
             </select></div>
           <div style="width:200px"><label>Name</label><input type="text" id="srcName" placeholder="e.g. Clients"></div>
           <div class="grow"><label id="srcTargetLabel">Folder path</label><input type="text" id="srcTarget" placeholder=""></div>
+        </div>
+        <div class="row" id="mailFields" style="display:none">
+          <div style="width:220px"><label>IMAP server</label><input type="text" id="mailHost" placeholder="filled in for common providers"></div>
+          <div style="width:220px"><label>App password</label><input type="password" id="mailPass" autocomplete="off"></div>
+          <div class="grow"><label>Folders (comma separated)</label><input type="text" id="mailFolders" value="INBOX"></div>
+          <div style="width:130px"><label>Days back</label><input type="number" id="mailDays" value="365" min="1"></div>
         </div>
         <div class="hint" id="srcHint"></div>
         <div class="row" style="margin-top:12px"><button class="btn primary" id="srcAdd">Add &amp; sync</button></div>
@@ -366,7 +373,7 @@ async function openDoc(id) {
   if (!d) return;
   $("#dTitle").textContent = kindIcon(d.kind) + " " + d.title;
   const isFile = d.uri.startsWith("file:");
-  const rel = d.related.length ? d.related.map(r => `<div class="rel" data-doc="${r.doc_id}"><span class="pill ${r.kind === "explicit" ? "accent" : ""}">${r.kind === "explicit" ? "link" : r.kind === "related" ? "similar" : "shared"}</span><span class="t">${esc(r.title)}</span><span class="muted small">${esc(r.label || "")}</span></div>`).join("") : '<p class="muted small">No connections yet.</p>';
+  const rel = d.related.length ? d.related.map(r => `<div class="rel" data-doc="${r.doc_id}"><span class="pill ${r.kind === "explicit" || r.kind === "attachment" ? "accent" : ""}">${r.kind === "explicit" ? "link" : r.kind === "attachment" ? "attachment" : r.kind === "related" ? "similar" : "shared"}</span><span class="t">${esc(r.title)}</span><span class="muted small">${esc(r.label || "")}</span></div>`).join("") : '<p class="muted small">No connections yet.</p>';
   $("#dBody").innerHTML = `
     <div class="row small muted" style="margin-bottom:10px"><span class="pill">${esc(d.kind)}</span><span class="pill">${esc(d.source)}</span><span>indexed ${ago(d.indexed_at)}</span>${d.revisions.length ? `<span>· ${d.revisions.length} earlier version(s)</span>` : ""}</div>
     <div class="row" style="margin-bottom:14px">${isFile ? `<a class="btn small" href="${withToken(`/documents/${d.id}/file`)}" target="_blank">Open original</a><a class="btn small" href="${withToken(`/documents/${d.id}/file?download=1`)}">Download</a>` : d.uri.startsWith("http") ? `<a class="btn small" href="${esc(d.uri)}" target="_blank" rel="noopener">Open web page</a>` : ""}
@@ -468,12 +475,21 @@ $("#createBtn").onclick = async () => {
 
 // ---------- sources & settings ----------
 const HINTS = {
+  imap: ["Email address", "you@gmail.com", "Reads emails and their attachments (PDF, Word, Excel, PowerPoint…) without marking anything as read. Use an app password, not your normal one: Gmail → myaccount.google.com/apppasswords (needs 2-step verification); iCloud → appleid.apple.com → App-Specific Passwords; Yahoo → Account security → Generate app password. Gmail folders: INBOX, [Gmail]/Sent Mail. Outlook / Microsoft 365: save emails into a folder and add that folder instead."],
   folder: ["Folder path", "Windows: C:\\Users\\you\\OneDrive - Company\\Clients   ·   Mac: /Users/you/Library/CloudStorage/OneDrive-Company/Clients", "Any folder works: Documents, Desktop, an Obsidian vault, a USB/NAS drive, or cloud folders synced by OneDrive, SharePoint, Dropbox, Google Drive for desktop, iCloud or Box. Tip: in Explorer, Shift+right-click a folder → “Copy as path”; on Mac, right-click → hold Option → “Copy … as Pathname”."],
   web: ["URLs", "https://example.com/report.pdf, https://example.com/article", "One or more web pages or online PDFs, separated by commas or spaces. They are re-checked on every sync."],
   http_json: ["API URL", "https://api.example.com/v1/notes", "For headers, tokens and field mapping, edit the config file (see brain.example.toml)."],
   gdrive: ["Drive folder ID", "1AbCdEf… (from the folder's URL)", "Needs a Google service-account key saved as ~/.secondbrain/gdrive-sa.json and pip install google-api-python-client google-auth. Simpler alternative: install Google Drive for desktop and add its folder as a normal folder."],
 };
-function srcHint() { const h = HINTS[$("#srcType").value]; $("#srcTargetLabel").textContent = h[0]; $("#srcTarget").placeholder = h[1]; $("#srcHint").textContent = h[2]; }
+function srcHint() { const t = $("#srcType").value, h = HINTS[t]; $("#srcTargetLabel").textContent = h[0]; $("#srcTarget").placeholder = h[1]; $("#srcHint").textContent = h[2]; $("#mailFields").style.display = t === "imap" ? "" : "none"; }
+const MAIL_HOSTS = { "gmail.com": "imap.gmail.com", "googlemail.com": "imap.gmail.com", "icloud.com": "imap.mail.me.com", "me.com": "imap.mail.me.com", "yahoo.com": "imap.mail.yahoo.com", "fastmail.com": "imap.fastmail.com", "zoho.com": "imap.zoho.com" };
+$("#srcTarget").addEventListener("input", () => {
+  if ($("#srcType").value !== "imap") return;
+  const domain = ($("#srcTarget").value.split("@")[1] || "").toLowerCase();
+  if (MAIL_HOSTS[domain] && !$("#mailHost").dataset.touched) $("#mailHost").value = MAIL_HOSTS[domain];
+  if (/gmail|googlemail/.test(domain) && $("#mailFolders").value === "INBOX") $("#mailFolders").value = "INBOX, [Gmail]/Sent Mail";
+});
+$("#mailHost").addEventListener("input", () => { $("#mailHost").dataset.touched = "1"; });
 $("#srcType").onchange = srcHint; srcHint();
 
 function renderSources() {
@@ -481,7 +497,7 @@ function renderSources() {
   const byName = Object.fromEntries(STATUS.sources.map(s => [s.name, s]));
   $("#srcBody").innerHTML = STATUS.configured_sources.map(c => {
     const s = byName[c.name] || {}; const errs = (s.last_stats && s.last_stats.errors) || [];
-    const where = c.path || (c.urls || []).join(", ") || c.url || c.folder_id || "";
+    const where = c.path || (c.urls || []).join(", ") || c.url || c.folder_id || (c.username ? `${c.username} · ${(c.folders || []).join(", ")} · last ${c.since_days || 365} days` : "");
     const builtIn = c.name === "_outputs";
     return `<tr><td><b>${esc(builtIn ? "Created by the brain" : c.name)}</b><div class="small muted">${esc(c.type)}</div></td>
       <td class="small" style="word-break:break-all">${esc(where)}${errs.length ? `<div style="color:var(--warn)">⚠ ${errs.length} issue(s): ${esc(errs[0]).slice(0, 160)}</div>` : ""}</td>
@@ -503,9 +519,13 @@ document.addEventListener("click", async e => {
 $("#syncAll").onclick = async () => { const r = await api("/sync", {}); toast(r.started ? "Sync started" : r.reason); refreshStatus(); };
 $("#srcAdd").onclick = async () => {
   const body = { type: $("#srcType").value, name: $("#srcName").value.trim(), target: $("#srcTarget").value.trim().replace(/^"|"$/g, "") };
+  if (body.type === "imap") Object.assign(body, { host: $("#mailHost").value.trim(), password: $("#mailPass").value, folders: $("#mailFolders").value, since_days: +$("#mailDays").value || 365 });
   if (!body.name || !body.target) { toast("Fill in a name and a location"); return; }
-  try { await api("/sources", body); toast(`Added "${body.name}", syncing now`); $("#srcName").value = $("#srcTarget").value = ""; refreshStatus(); }
-  catch (e) { toast(e.message, 6000); }
+  const btn = $("#srcAdd"); btn.disabled = true;
+  if (body.type === "imap") btn.textContent = "Checking sign-in…";
+  try { await api("/sources", body); toast(`Added "${body.name}", syncing now`); $("#srcName").value = $("#srcTarget").value = $("#mailPass").value = ""; refreshStatus(); }
+  catch (e) { toast(e.message, 8000); }
+  btn.disabled = false; btn.textContent = "Add & sync";
 };
 $("#claudeSave").onclick = async () => {
   const key = $("#claudeKey").value.trim(); if (!key) return;
@@ -536,7 +556,7 @@ async function loadGraph() {
   const cv = $("#graph"), W = cv.clientWidth, H = cv.clientHeight;
   const sources = [...new Set(data.nodes.map(n => n.source))];
   const idx = new Map(); const degree = {};
-  const edges = data.edges.filter(e => kinds.has(e.kind));
+  const edges = data.edges.filter(e => kinds.has(e.kind === "attachment" ? "explicit" : e.kind));
   edges.forEach(e => { degree[e.src] = (degree[e.src] || 0) + 1; degree[e.dst] = (degree[e.dst] || 0) + 1; });
   let nodes = data.nodes;
   if (nodes.length > 600) nodes = nodes.filter(n => degree[n.id]).slice(0, 600);
@@ -567,7 +587,7 @@ function tick() {
   const ec = { explicit: css.getPropertyValue("--e-explicit").trim(), related: css.getPropertyValue("--e-related").trim(), entity: css.getPropertyValue("--e-entity").trim() };
   const textColor = css.getPropertyValue("--text").trim();
   for (const e of G.edges) { const p = N[e.a], q = N[e.b]; const hot = G.hover && (p === G.hover || q === G.hover);
-    ctx.strokeStyle = ec[e.kind]; ctx.globalAlpha = hot ? 1 : G.hover ? 0.12 : 0.55; ctx.lineWidth = (e.kind === "explicit" ? 1.8 : 1) / G.scale;
+    ctx.strokeStyle = ec[e.kind] || ec.explicit; ctx.globalAlpha = hot ? 1 : G.hover ? 0.12 : 0.55; ctx.lineWidth = (e.kind === "explicit" ? 1.8 : 1) / G.scale;
     ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); }
   ctx.globalAlpha = 1; ctx.font = `${12 / G.scale}px system-ui`; ctx.fillStyle = textColor;
   for (const n of N) { const r = 4 + Math.min(10, Math.sqrt(n.deg) * 2);
