@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "secondbrain"
-version = "0.3.0"
+version = "0.4.0"
 description = "Personal knowledge system: connect folders, drives and APIs; link and learn; answer and create docs and decks with Claude."
 requires-python = ">=3.11"
 dependencies = [

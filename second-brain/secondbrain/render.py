@@ -20,6 +20,40 @@ class Deck(BaseModel):
     slides: list[Slide]
 
 
+def parse_deck_markdown(text: str, fallback_title: str = "Deck") -> Deck:
+    """A deck from a Markdown outline ("# Title", subtitle line, "## Slide title", "- bullets", "Notes: ...").
+    Used when Claude writes the deck in the Claude app and the user pastes the reply back."""
+    text = re.sub(r"^```\w*\s*$", "", text, flags=re.M)
+    title, subtitle, slides = "", "", []
+    current: Slide | None = None
+    in_notes = False
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped or re.fullmatch(r"-{3,}|\*{3,}", stripped):
+            continue
+        if re.match(r"^#\s+", stripped) and not title and current is None:
+            title = stripped.lstrip("# ").strip()
+        elif re.match(r"^#{2,3}\s+", stripped):
+            heading = re.sub(r"^#+\s*", "", stripped)
+            heading = re.sub(r"^(slide\s*\d+\s*[:.\-–]\s*)", "", heading, flags=re.I).strip("* ")
+            current, in_notes = Slide(title=heading), False
+            slides.append(current)
+        elif current is None:
+            if not subtitle and title:
+                subtitle = stripped.strip("*_ ")
+        elif m := re.match(r"^\**(speaker\s+)?notes?\**\s*:\**\s*(.*)", stripped, flags=re.I):
+            current.speaker_notes, in_notes = m.group(2).strip(), True
+        elif in_notes:
+            current.speaker_notes = (current.speaker_notes + " " + stripped).strip()
+        elif m := re.match(r"^(\s*)(?:[-*•+]|\d+[.)])\s+(.*)", line):
+            indent = "  " if len(m.group(1).replace("\t", "  ")) >= 2 else ""
+            current.bullets.append(indent + m.group(2).strip())
+        else:
+            current.bullets.append(stripped)
+    return Deck(title=title or fallback_title, subtitle=subtitle, slides=slides)
+
+
 _INLINE = re.compile(r"(\*\*[^*]+\*\*|\*[^*]+\*)")
 
 

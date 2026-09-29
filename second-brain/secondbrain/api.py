@@ -16,6 +16,12 @@ Endpoints (JSON):
   POST /create/deck     {"topic", "slides"?, "instructions"?, "doc_ids"?, "use_ai"?}
         doc_ids pins the reference documents (else the brain picks); use_ai=false builds without Claude
   POST /settings/claude-key {"key"}   (only from this computer)
+  GET  /settings/ai                 POST /settings/ai {"mode": claude|local|claude_app|off, "local_provider"?,
+                                                       "local_url"?, "local_model"?}   (only from this computer)
+  GET  /settings/ai/models?provider=&url=     POST /settings/ai/test    (list / try the local AI)
+  POST /settings/claude-desktop     (connect the Claude desktop app to this brain; only from this computer)
+  POST /create/from-reply {"topic", "text", "format": docx|md|pptx, "sources"?}   (Claude-app mode: build the
+        file from the reply the user pasted back)
 
 Set ``BRAIN_API_TOKEN`` to require ``Authorization: Bearer <token>``. Binds to 127.0.0.1 by default.
 """
@@ -38,7 +44,9 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 from urllib.request import url2pathname
 
 from .brain import Brain
+from . import claude_desktop
 from .config import DEFAULT_HOME, append_source, load_config, remove_source, save_secret
+from .llm import AI_MODES, LOCAL_PROVIDERS, LLMUnavailable, LocalLLM, ai_settings, claude_configured
 
 UI_FILE = Path(__file__).parent / "ui" / "index.html"
 SECRET_OPTIONS = {"headers", "password", "oauth2_token", "credentials"}  # never sent to the browser
@@ -49,11 +57,6 @@ MAIL_SERVERS = {  # sensible IMAP defaults by email domain
     "yahoo.com": "imap.mail.yahoo.com", "fastmail.com": "imap.fastmail.com", "zoho.com": "imap.zoho.com",
     "outlook.com": "outlook.office365.com", "hotmail.com": "outlook.office365.com", "live.com": "outlook.office365.com",
 }
-
-
-def claude_configured() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
-                or (Path.home() / ".config" / "anthropic").is_dir())
 
 
 class BrainService:
@@ -120,6 +123,7 @@ class BrainService:
             out = self.brain.status()
         out["sync"] = self.sync_state
         out["claude_configured"] = claude_configured()
+        out["ai"] = {**ai_settings(), "label": self.brain.ai_label}
         out["config_file"] = str(self.config_file())
         out["configured_sources"] = [
             {"name": s.name, "type": s.type, **{k: v for k, v in s.options.items() if k not in SECRET_OPTIONS}}
@@ -138,7 +142,7 @@ def make_handler(service: BrainService, token: str | None):
     brain_ref = service
 
     class Handler(BaseHTTPRequestHandler):
-        server_version = "SecondBrain/0.2"
+        server_version = "SecondBrain/0.4"
 
         def log_message(self, fmt, *args):  # quieter logs
             pass
@@ -233,6 +237,9 @@ def make_handler(service: BrainService, token: str | None):
                         return [h.to_dict() for h in brain.search(q["q"], int(q.get("limit", 8)), q.get("source"), days)]
                     if p == "/digest":
                         return brain.whats_new(int(q.get("days", 7)))
+                    if p == "/settings/ai":
+                        return {**ai_settings(), "label": brain.ai_label, "claude_configured": claude_configured(),
+                                "claude_desktop": claude_desktop.status()}
                     if p == "/collections":
                         return brain.collections()
                     if p == "/graph":
@@ -244,6 +251,12 @@ def make_handler(service: BrainService, token: str | None):
                         return brain.document(int(m.group(1)))
                     if m := re.fullmatch(r"/documents/(\d+)/related", p):
                         return brain.related(int(m.group(1)))
+                if p == "/settings/ai/models":
+                    local = LocalLLM(q.get("provider", "ollama"), q.get("url", ""))
+                    try:
+                        return {"models": local.models(), "url": local.url}
+                    except LLMUnavailable as exc:
+                        return {"models": [], "url": local.url, "error": str(exc)}
                 return None
             if method != "POST":
                 return None
@@ -264,8 +277,26 @@ def make_handler(service: BrainService, token: str | None):
                 if not key:
                     raise ValueError("key is empty")
                 save_secret(brain.config.data_dir, "ANTHROPIC_API_KEY", key)
-                brain.llm._client = None  # pick up the new key on the next call
+                claude = getattr(brain.llm, "claude", brain.llm)
+                claude._client = None  # pick up the new key on the next call
                 return {"saved": True}
+            if p in ("/settings/ai", "/settings/claude-desktop"):
+                if not _is_local(self.client_address[0]):
+                    raise PermissionError("AI settings can only be changed from this computer")
+                if p == "/settings/claude-desktop":
+                    return claude_desktop.connect(service.config_file() if service.config_file().exists() else None)
+                return self._save_ai(body)
+            if p == "/settings/ai/test":
+                with service.worker() as w:
+                    try:
+                        reply = w.llm.text("You are a helpful assistant.", "Reply with just the word: ready", 20)
+                        return {"ok": True, "reply": reply[:200], "label": w.ai_label}
+                    except LLMUnavailable as exc:
+                        return {"ok": False, "error": str(exc), "label": w.ai_label}
+            if p == "/create/from-reply":
+                with lock:
+                    return self._with_download(brain.save_written(
+                        body["topic"], body["text"], body.get("format", "docx"), body.get("sources")))
             # Slow work that may call Claude runs on its own connection, outside the shared lock.
             if p in ("/ask", "/enrich", "/digest", "/create/document", "/create/deck"):
                 with service.worker() as w:
@@ -290,8 +321,27 @@ def make_handler(service: BrainService, token: str | None):
             return None
 
         def _with_download(self, result: dict[str, Any]) -> dict[str, Any]:
-            result["download"] = "/outputs/" + quote(Path(result["path"]).name)
+            if result.get("path"):  # Claude-app hand-offs have no file yet
+                result["download"] = "/outputs/" + quote(Path(result["path"]).name)
             return result
+
+        def _save_ai(self, body: dict[str, Any]) -> dict[str, Any]:
+            mode = str(body.get("mode", "")).strip()
+            if mode not in AI_MODES:
+                raise ValueError(f"mode must be one of {', '.join(AI_MODES)}")
+            data_dir = self.brain.config.data_dir
+            if mode == "local":
+                provider = str(body.get("local_provider") or "ollama")
+                if provider not in LOCAL_PROVIDERS:
+                    raise ValueError("local_provider must be ollama or openai")
+                url = str(body.get("local_url") or "").strip()
+                if url and not re.match(r"^https?://", url):
+                    raise ValueError("the local AI address should start with http:// (e.g. http://localhost:11434)")
+                save_secret(data_dir, "BRAIN_LOCAL_PROVIDER", provider)
+                save_secret(data_dir, "BRAIN_LOCAL_URL", url)
+                save_secret(data_dir, "BRAIN_LOCAL_MODEL", str(body.get("local_model") or "").strip())
+            save_secret(data_dir, "BRAIN_AI_MODE", mode)
+            return {**ai_settings(), "label": self.brain.ai_label}
 
         def _mail_options(self, name: str, address: str, body: dict[str, Any]) -> dict[str, Any]:
             from .connectors.imap import ImapConnector

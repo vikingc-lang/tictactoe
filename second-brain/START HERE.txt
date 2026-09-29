@@ -10,7 +10,8 @@ Double-click  second-brain.html  (Chrome or Edge recommended).
 
   - Sources & settings -> Add a folder (Documents, OneDrive, Dropbox...)
   - Drop in emails: .eml files or a .mbox archive (Gmail: takeout.google.com -> Mail)
-  - Paste your Claude API key (console.anthropic.com) for written answers, documents and decks
+  - Choose your AI under "AI engine": a Claude API key, Local AI (Ollama on this laptop),
+    or the Claude app (copy & paste on your subscription). See GETTING_STARTED.md section 5.
   - Your brain is saved in that browser. Use "Export backup" to keep a copy.
 
 
@@ -32,7 +33,9 @@ OPTION B - Full app (always-on syncing, live mailbox, Claude Desktop)
 3. In the app:
      - Sources & settings -> Add a source -> Folder, or Email mailbox
        (Gmail/iCloud/Yahoo: use an APP password, e.g. myaccount.google.com/apppasswords)
-     - Paste your Claude API key under "Claude connection"
+     - Choose your AI under "AI engine": Claude API key, Local AI (Ollama, free and
+       offline), Claude app (copy & paste on your subscription), or Off.
+       The full app can also "Connect Claude Desktop" in one click.
      - Home / Ask / Search / Library / Connections / Create / Remember
      - Ctrl+K (Cmd+K on Mac) finds anything from any page
      - Home -> What's new -> Brief me: a briefing on what arrived this week

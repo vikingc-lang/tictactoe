@@ -24,7 +24,7 @@
 | Store | `store.py` | SQLite + FTS5 (BM25, porter stemming), links, revisions, source status |
 | Graph | `graph.py` | Explicit / related (TF-IDF cosine) / entity edges; JSON export |
 | Retrieval | `search.py` | BM25 + graph boost; context expansion to neighbouring documents |
-| Reasoning | `llm.py`, `brain.py` | Claude calls (adaptive thinking, refusal fallbacks, structured outputs) |
+| Reasoning | `llm.py`, `brain.py` | Switchable AI: Claude API (adaptive thinking, refusal fallbacks, structured outputs), local models (Ollama native API with a larger context window, or OpenAI-compatible servers), Claude-app hand-off, or off |
 | Creation | `render.py` | Markdown → DOCX, structured deck → PPTX (on your master template) |
 | Interfaces | `cli.py`, `mcp_server.py`, `api.py` | CLI, MCP (stdio / HTTP), REST with bearer auth |
 
@@ -43,7 +43,8 @@ playbooks, proposals) and point a `folder` source at the exported or synced libr
 
 ## 4. Risk and governance (important for client work)
 
-- **Confidentiality:** client material reaches the Claude API only when you ask, create or enrich. Use
+- **Confidentiality:** client material reaches the Claude API only when you ask, create or enrich. Choose
+  **Local AI** to keep everything on the laptop, or **Claude app** to decide prompt by prompt what you share. Use
   separate brains (separate `data_dir`) per client when NDAs require segregation, and use `exclude`
   patterns for sensitive folders.
 - **Access:** the REST API and HTTP MCP server bind to localhost by default. Set `BRAIN_API_TOKEN` before

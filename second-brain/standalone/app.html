@@ -170,6 +170,21 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
 .collbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
 .collbar select { width: auto; min-width: 200px; }
 .askhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+/* ---- v0.4: choose the AI, Claude-app hand-off ---- */
+.ai-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0 14px; }
+.ai-mode { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: var(--panel); min-width: 0; }
+.ai-mode:hover { background: var(--panel-2); }
+.ai-mode.on { border-color: var(--accent); background: var(--accent-soft); }
+.ai-mode input { margin-top: 4px; width: auto; flex: none; }
+.ai-mode span { display: block; font-size: 13px; color: var(--muted); }
+.ai-panel { border-top: 1px solid var(--border); padding-top: 12px; }
+.ai-panel select, .ai-panel input { min-width: 0; }
+.handoff { border: 1px dashed var(--accent); border-radius: 10px; padding: 12px 14px; background: var(--accent-soft); }
+.handoff .ho-steps { margin: 6px 0 10px; padding-left: 20px; }
+.handoff pre.ho-pre { white-space: pre-wrap; max-height: 260px; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 12px; }
+.handoff textarea { margin-top: 10px; width: 100%; background: var(--panel); }
+.handoff details { flex-basis: 100%; }
+@media (max-width: 760px) { .ai-modes { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -238,7 +253,7 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
         <div class="steps">
           <div class="step"><b>1 · Add folders</b>Pick Documents, OneDrive, Dropbox, Google Drive or any folder, or drop files and email exports (.eml, .mbox) anywhere on this page.<br><a href="#" data-goto="sources">Add a folder →</a></div>
           <div class="step"><b>2 · Let it read</b>Word, PowerPoint, PDF, Excel, notes and emails are read and linked, all inside this browser.</div>
-          <div class="step"><b>3 · Connect Claude</b>Paste your Anthropic API key to get written answers, documents and decks.<br><a href="#" data-goto="sources">Add key →</a></div>
+          <div class="step"><b>3 · Choose your AI</b>Claude (API key), Local AI on this laptop, or the Claude app on your subscription, for written answers, documents and decks.<br><a href="#" data-goto="sources">Choose →</a></div>
           <div class="step"><b>4 · Ask &amp; create</b>Ask questions here, or produce Word briefs and PowerPoint decks on the Create tab.</div>
         </div>
       </div>
@@ -361,15 +376,55 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
       </div>
 
       <div class="card">
-        <h3 style="margin-top:0">Claude connection</h3>
+        <h3 style="margin-top:0">AI engine</h3>
+        <p class="small muted" style="margin:0">Choose who writes answers, briefings, documents and decks. Search, connections and <b>Build without AI</b> never need AI.</p>
+        <div class="ai-modes" id="aiModes" role="radiogroup" aria-label="AI engine">
+          <label class="ai-mode"><input type="radio" name="aimode" value="claude"><div><b>☁️ Claude (API key)</b><span>Best quality. Pay per use with a key from console.anthropic.com.</span></div></label>
+          <label class="ai-mode"><input type="radio" name="aimode" value="local"><div><b>💻 Local AI</b><span>A free model on this computer (Ollama or LM Studio). Private and works offline, but slower and simpler writing.</span></div></label>
+          <label class="ai-mode"><input type="radio" name="aimode" value="claude_app"><div><b>💬 Claude app (your subscription)</b><span>No API key. The brain prepares each prompt with your sources; you paste it into Claude and paste the reply back.</span></div></label>
+          <label class="ai-mode"><input type="radio" name="aimode" value="off"><div><b>⏸️ Off</b><span>No AI at all. Everything else keeps working.</span></div></label>
+        </div>
+        <div class="ai-panel" id="aiClaude">
         <p class="small muted" id="claudeState">Checking…</p>
         <div class="row"><input type="password" id="claudeKey" class="grow" placeholder="sk-ant-…" autocomplete="off">
           <button class="btn" id="claudeSave">Save key</button><button class="btn danger" id="claudeForget">Forget key</button></div>
         <div class="row" style="margin-top:10px"><div style="width:260px"><label>Model</label>
           <select id="modelSel"><option value="claude-opus-5">Claude Opus 5 (best quality)</option><option value="claude-sonnet-5">Claude Sonnet 5 (faster, cheaper)</option></select></div></div>
         <div class="hint">The key is saved only in this browser on this computer, and is sent only to Anthropic's API. Get a key at console.anthropic.com. Search, browsing and connections work without it.</div>
-        <div class="row" style="margin-top:14px"><button class="btn" id="enrichBtn">🧩 Summarise &amp; connect documents with Claude</button>
-          <span class="small muted">Adds summaries, tags and people/company links (uses API credits, 20 docs per click).</span></div>
+        </div>
+        <div class="ai-panel" id="aiLocal" hidden>
+          <div class="row">
+            <select id="localProvider" style="width:auto" aria-label="Local AI app"><option value="ollama">Ollama</option><option value="openai">LM Studio / other (OpenAI-compatible)</option></select>
+            <input type="text" id="localUrl" class="grow" placeholder="http://localhost:11434" aria-label="Address" autocomplete="off">
+          </div>
+          <div class="row" style="margin-top:8px">
+            <select id="localModel" class="grow" aria-label="Model"><option value="">Automatic (first installed model)</option></select>
+            <button class="btn small" id="localRefresh">↻ Find models</button>
+            <button class="btn small primary" id="localTest">Test</button>
+          </div>
+          <p class="small" id="localState" style="margin:8px 0 0"></p>
+          <details class="small" style="margin-top:8px"><summary><b>How to set up local AI (10 minutes, one time)</b></summary>
+            <ol style="padding-left:18px;margin:8px 0">
+              <li>Install <b>Ollama</b> from <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a> (Mac or Windows) and open it.</li>
+              <li>Download a model: open Terminal (Mac) or Command Prompt (Windows) and run <code>ollama pull llama3.1:8b</code> (about 5 GB). Good alternatives: <code>qwen3:8b</code>, <code>gemma3:12b</code> (needs 16 GB RAM or more).</li>
+              <li><b>Allow this page to talk to Ollama</b> (the HTML file runs in your browser, so Ollama has to permit it):<br>
+                Mac: in Terminal run <code>launchctl setenv OLLAMA_ORIGINS "*"</code>, then quit Ollama (menu bar icon → Quit) and open it again.<br>
+                Windows: Start → “Edit environment variables for your account” → New: name <code>OLLAMA_ORIGINS</code>, value <code>*</code> → OK, then quit Ollama (tray icon) and open it again.<br>
+                LM Studio: Developer tab → Settings → turn on <b>Enable CORS</b>. (The full app needs none of this.)</li>
+              <li>Press <b>↻ Find models</b>, pick one, then <b>Test</b>.</li>
+            </ol>
+            Prefer an app with windows and buttons? Use <b>LM Studio</b> (lmstudio.ai): download a model, open the <i>Developer</i> tab, start the server, and choose “LM Studio” above.
+            Local models are smaller than Claude: expect simpler writing and occasional citation slips, and a few minutes per document on a laptop.
+          </details>
+        </div>
+        <div class="ai-panel" id="aiApp" hidden>
+          <p class="small" style="margin:0 0 8px">Use Claude on your paid subscription (Pro, Max or Team), no API key. When you press an AI button,
+            the brain prepares a prompt with your instructions and the right passages from your documents. <b>Copy</b> it, paste it into Claude
+            (claude.ai or the Claude app), then paste Claude's reply back here: documents and decks are built from it and kept in your Library.</p>
+          <p class="small muted" style="margin:0">Want the Claude desktop app to search your brain by itself? That needs the full app (Option B in START HERE.txt), which adds a one-click <b>Connect Claude Desktop</b>.</p>
+        </div>
+        <div class="row" style="margin-top:14px"><button class="btn" id="enrichBtn">🧩 Summarise &amp; connect documents with AI</button>
+          <span class="small muted">Adds summaries, tags and people/company links with your chosen AI: Claude (API credits) or Local AI. 20 documents per click.</span></div>
       </div>
 
       <div class="card">
@@ -756,7 +811,104 @@ function explainError(e) {
   if (e instanceof A.APIError) return new LLMUnavailable(`Claude API error ${e.status ?? ""}: ${e.message}`);
   return e;
 }
+// ---------- AI choice: Claude API, local AI (Ollama / LM Studio), Claude app hand-off, or off ----------
+const AI_MODES = ["claude", "local", "claude_app", "off"];
+const LOCAL_DEFAULTS = { ollama: "http://localhost:11434", openai: "http://localhost:1234/v1" };
+function aiSettings() {
+  const mode = settings.get("aiMode", "claude"), provider = settings.get("localProvider", "ollama");
+  return { mode: AI_MODES.includes(mode) ? mode : "claude", local_provider: provider in LOCAL_DEFAULTS ? provider : "ollama",
+           local_url: settings.get("localUrl"), local_model: settings.get("localModel") };
+}
+const aiKind = () => aiSettings().mode;
+function aiLabel(s = aiSettings()) { return s.mode === "local" ? `Local AI (${s.local_model || "auto"})` : { claude: "Claude", claude_app: "Claude app", off: "AI off" }[s.mode]; }
+const handoffText = (system, prompt) => `I'm working from documents in my personal knowledge base (my "second brain"). Follow these instructions:\n\n${system}\n\n${prompt}`;
+class Handoff extends LLMUnavailable {  // Claude-app mode: the prompt goes to the user instead of an API
+  constructor(system, prompt) { super("AI runs in the Claude app: copy the prepared prompt into Claude"); this.prompt = prompt; this.text = handoffText(system, prompt); }
+}
+const THINK_RE = /<think>[\s\S]*?<\/think>/g;  // reasoning models (Qwen3, DeepSeek-R1) think out loud
+async function localRequest(path, body, s) {
+  const base = (s.local_url || LOCAL_DEFAULTS[s.local_provider]).replace(/\/+$/, "");
+  let res;
+  try { res = await fetch(base + path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}); }
+  catch { throw new LLMUnavailable(s.local_provider === "ollama"
+    ? `Can't reach Ollama at ${base}. Is Ollama running, and does it allow this page? See “How to set up local AI” under Sources & settings`
+    : `Can't reach your local AI server at ${base}. Is its server started, with CORS enabled?`); }
+  const text = await res.text();
+  if (!res.ok) {
+    if (res.status === 404 && /model/i.test(text)) throw new LLMUnavailable(`The local model “${s.local_model}” isn't installed. Press “Find models” and pick one`);
+    throw new LLMUnavailable(`Local AI error ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return JSON.parse(text);
+}
+async function localModels(provider, url) {
+  const s = { local_provider: provider in LOCAL_DEFAULTS ? provider : "ollama", local_url: url };
+  const d = await localRequest(s.local_provider === "ollama" ? "/api/tags" : "/models", null, s);
+  return (s.local_provider === "ollama" ? (d.models || []).map(m => m.name) : (d.data || []).map(m => m.id)).sort();
+}
+async function localChat(system, prompt, maxTokens, schema) {
+  const s = aiSettings(); let model = s.local_model;
+  if (!model) { const installed = await localModels(s.local_provider, s.local_url); if (!installed.length) throw new LLMUnavailable("No local models are installed yet (Ollama: run “ollama pull llama3.1:8b”)"); model = installed[0]; }
+  const messages = [{ role: "system", content: system }, { role: "user", content: prompt }];
+  let reply;
+  if (s.local_provider === "ollama") {  // native API: lets us raise the context window above Ollama's small default
+    const body = { model, messages, stream: false, options: { num_ctx: 16384, num_predict: Math.min(maxTokens, 8192) } };
+    if (schema) body.format = schema;
+    reply = (await localRequest("/api/chat", body, s)).message?.content || "";
+  } else {
+    const body = { model, messages, max_tokens: Math.min(maxTokens, 8192), stream: false };
+    if (schema) body.response_format = { type: "json_schema", json_schema: { name: "reply", strict: true, schema } };
+    let d;
+    try { d = await localRequest("/chat/completions", body, s); }
+    catch (e) { if (!schema) throw e; delete body.response_format; d = await localRequest("/chat/completions", body, s); }
+    reply = d.choices?.[0]?.message?.content || "";
+  }
+  return reply.replace(THINK_RE, "").trim();
+}
+function parseJsonReply(text) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/); if (fenced) text = fenced[1];
+  const a = text.indexOf("{"), b = text.lastIndexOf("}"); if (a < 0 || b < a) throw new Error("no JSON object in the reply");
+  return JSON.parse(text.slice(a, b + 1));
+}
+function aiGate(system, prompt) {
+  const mode = aiKind();
+  if (mode === "claude_app") throw new Handoff(system, prompt);
+  if (mode === "off") throw new LLMUnavailable("AI is switched off in settings");
+  return mode;
+}
+// A deck from a Markdown outline pasted back from the Claude app (mirrors render.parse_deck_markdown).
+function parseDeckMarkdown(text, fallbackTitle) {
+  let title = "", subtitle = "", cur = null, inNotes = false; const slides = [];
+  for (const raw of text.replace(/^```\w*\s*$/gm, "").split("\n")) {
+    const line = raw.replace(/\s+$/, ""), t = line.trim(); let m;
+    if (!t || /^(-{3,}|\*{3,})$/.test(t)) continue;
+    if (/^#\s+/.test(t) && !title && !cur) title = t.replace(/^#+\s*/, "");
+    else if (/^#{2,3}\s+/.test(t)) { cur = { title: t.replace(/^#+\s*/, "").replace(/^slide\s*\d+\s*[:.\-–]\s*/i, "").replace(/^\*+|\*+$/g, "").trim(), bullets: [], speaker_notes: "" }; slides.push(cur); inNotes = false; }
+    else if (!cur) { if (!subtitle && title) subtitle = t.replace(/^[*_\s]+|[*_\s]+$/g, ""); }
+    else if ((m = t.match(/^\**(speaker\s+)?notes?\**\s*:\**\s*(.*)$/i))) { cur.speaker_notes = m[2].trim(); inNotes = true; }
+    else if (inNotes) cur.speaker_notes = (cur.speaker_notes + " " + t).trim();
+    else if ((m = line.match(/^(\s*)(?:[-*•+]|\d+[.)])\s+(.*)$/))) cur.bullets.push((m[1].replace(/\t/g, "  ").length >= 2 ? "  " : "") + m[2].trim());
+    else cur.bullets.push(t);
+  }
+  return { title: title || fallbackTitle, subtitle, slides };
+}
+const DECK_OUTLINE = `Reply with only the deck, in exactly this Markdown format (no other text):
+
+# Deck title
+Subtitle line
+
+## Slide 1 action title (a full-sentence takeaway)
+- bullet
+- bullet
+Notes: speaker notes citing sources as [n]
+
+## Slide 2 action title
+...`;
 async function llmText(system, prompt, maxTokens = 16000) {
+  if (aiGate(system, prompt) === "local") {
+    const reply = await localChat(system, prompt, maxTokens);
+    if (!reply) throw new LLMUnavailable("The local model returned an empty reply");
+    return reply;
+  }
   const model = settings.get("model", "claude-opus-5");
   const params = { model, max_tokens: maxTokens, system, thinking: { type: "adaptive" }, output_config: { effort: "high" },
                    messages: [{ role: "user", content: prompt }] };
@@ -767,6 +919,15 @@ async function llmText(system, prompt, maxTokens = 16000) {
   return msg.content.filter(b => b.type === "text").map(b => b.text).join("").trim();
 }
 async function llmJSON(system, prompt, schema, maxTokens = 16000) {
+  if (aiGate(system, prompt) === "local") {
+    const sys = `${system}\n\nReply with only a JSON object that matches this JSON schema, no other text:\n${JSON.stringify(schema)}`;
+    let last;
+    for (let i = 0; i < 2; i++) {  // small models occasionally slip; one retry fixes most of it
+      try { const out = parseJsonReply(await localChat(sys, prompt, maxTokens, schema)); for (const k of schema.required || []) if (!(k in out)) throw new Error(`missing “${k}”`); return out; }
+      catch (e) { if (e instanceof LLMUnavailable) throw e; last = e; }
+    }
+    throw new LLMUnavailable(`The local model didn't return a usable result (${last.message}). Try again or pick a bigger model`);
+  }
   const model = settings.get("model", "claude-opus-5");
   let msg;
   try {
@@ -1206,6 +1367,7 @@ const Brain = {
     return hits;
   },
   formatContext(hits, maxChars = 60000) {
+    if (aiKind() === "local") maxChars = Math.min(maxChars, 24000);  // local models have small context windows
     const numbers = new Map(), sources = [], blocks = []; let used = 0;
     for (const h of hits) {
       if (!numbers.has(h.doc_id)) { numbers.set(h.doc_id, numbers.size + 1); sources.push({ n: numbers.get(h.doc_id), doc_id: h.doc_id, title: h.title, uri: h.uri, date: h.date }); }
@@ -1244,8 +1406,9 @@ const Brain = {
     const { context, sources } = this.formatContext(hits);
     const convo = history.map(t => `Q: ${t.q}\nA: ${String(t.a || "").slice(0, 1500)}`).join("\n\n");
     const prompt = `<sources>\n${context}\n</sources>\n\n` + (convo ? `<conversation>\n${convo}\n</conversation>\n\n` : "") + `Question: ${question}`;
-    try { return { answer: await llmText(ANSWER_SYSTEM, prompt), sources, mode: "claude" }; }
+    try { return { answer: await llmText(ANSWER_SYSTEM, prompt), sources, mode: aiKind(), ai: aiLabel() }; }
     catch (e) {
+      if (e instanceof Handoff) return { answer: "", handoff: e.text, sources, mode: "handoff" };
       if (!(e instanceof LLMUnavailable)) throw e;
       const passages = sources.map(s => `[${s.n}] ${s.title}\n` + hits.find(h => h.doc_id === s.doc_id).text.slice(0, 500)).join("\n\n");
       return { answer: passages, sources, mode: "extractive", reason: e.message };
@@ -1261,8 +1424,8 @@ const Brain = {
     if (useAi && docs.length) {
       const { context, sources } = this.formatContext(docs.slice(0, limit).map(d => ({ doc_id: d.id, title: d.title, uri: d.uri, source: d.source, date: docDate(d), text: d.summary || d.text.slice(0, 1500) })), 50000);
       out.sources = sources;
-      try { out.briefing = await llmText(DIGEST_SYSTEM, `<documents>\n${context}\n</documents>\n\nBrief me on the last ${days} days.`, 8000); out.mode = "claude"; }
-      catch (e) { if (!(e instanceof LLMUnavailable)) throw e; out.error = e.message; }
+      try { out.briefing = await llmText(DIGEST_SYSTEM, `<documents>\n${context}\n</documents>\n\nBrief me on the last ${days} days.`, 8000); out.mode = aiKind(); out.ai = aiLabel(); }
+      catch (e) { if (e instanceof Handoff) { out.mode = "handoff"; out.handoff = e.text; } else { if (!(e instanceof LLMUnavailable)) throw e; out.error = e.message; } }
     }
     return out;
   },
@@ -1300,35 +1463,51 @@ const Brain = {
     const { hits, context, sources } = this.creationContext(topic, docIds);
     let markdown = null, mode = "no_ai", note = "Draft assembled from your reference documents (no AI)";
     if (useAi) {
-      try { markdown = await llmText(DOC_SYSTEM, `<sources>\n${context}\n</sources>\n\nWrite a document about: ${topic}\n${instructions ? "Additional instructions: " + instructions : ""}`, 32000); mode = "claude"; }
-      catch (e) { if (!(e instanceof LLMUnavailable)) throw e; mode = "extractive"; note = e.message; }
+      try { markdown = await llmText(DOC_SYSTEM, `<sources>\n${context}\n</sources>\n\nWrite a document about: ${topic}\n${instructions ? "Additional instructions: " + instructions : ""}`, 32000); mode = aiKind(); }
+      catch (e) { if (e instanceof Handoff) return { mode: "handoff", handoff: e.text, sources, topic, format }; if (!(e instanceof LLMUnavailable)) throw e; mode = "extractive"; note = e.message; }
     }
     if (markdown === null) {
       markdown = `# ${topic}\n\n> ${note}.\n\n` + sources.map(s => `## ${s.title}\n\n${this.passages(hits, s).map(p => p.trim().slice(0, 1200)).join("\n\n")} [${s.n}]`).join("\n\n")
         + "\n\n## Sources\n\n" + sources.map(s => `- [${s.n}] ${s.title}`).join("\n");
     }
+    return this.writeDocument(topic, format, markdown, sources, mode);
+  },
+  async writeDocument(topic, format, markdown, sources, mode) {
     const name = `${today()}-${slug(topic)}${format === "docx" ? ".docx" : ".md"}`;
     const blob = format === "docx" ? markdownToDocx(markdown, topic) : new Blob([markdown], { type: "text/markdown" });
     const docId = await this.saveOutput(name, blob, markdown, topic, format === "docx" ? "document" : "note");
-    return { path: name, name, download: URL.createObjectURL(blob), sources, mode, doc_id: docId };
+    return { path: name, name, download: URL.createObjectURL(blob), sources, mode, ai: aiLabel(), doc_id: docId };
   },
   async createDeck(topic, slides, instructions, { docIds = null, useAi = true } = {}) {
     const { hits, context, sources } = this.creationContext(topic, docIds);
     let deck = null, mode = "no_ai";
     if (useAi) {
-      try { deck = await llmJSON(DECK_SYSTEM, `<sources>\n${context}\n</sources>\n\nCreate a ${slides}-slide deck (excluding the title slide) about: ${topic}\n${instructions ? "Additional instructions: " + instructions : ""}`, DECK_SCHEMA); mode = "claude"; }
-      catch (e) { if (!(e instanceof LLMUnavailable)) throw e; mode = "extractive"; }
+      try { deck = await llmJSON(DECK_SYSTEM, `<sources>\n${context}\n</sources>\n\nCreate a ${slides}-slide deck (excluding the title slide) about: ${topic}\n${instructions ? "Additional instructions: " + instructions : ""}`, DECK_SCHEMA); mode = aiKind(); }
+      catch (e) { if (e instanceof Handoff) return { mode: "handoff", handoff: handoffText(DECK_SYSTEM + "\n\n" + DECK_OUTLINE, e.prompt), sources, topic, format: "pptx" }; if (!(e instanceof LLMUnavailable)) throw e; mode = "extractive"; }
     }
     if (deck === null) {
       const bullets = s => this.passages(hits, s).flatMap(p => p.split("\n")).map(l => l.trim().replace(/^[#\-•*\s]+/, "").trim())
         .filter(l => l.length > 3 && l !== s.title).slice(0, 5).map(l => l.slice(0, 160));
       deck = { title: topic, subtitle: "Draft built from your reference documents", slides: sources.slice(0, slides).map(s => ({ title: s.title, bullets: bullets(s), speaker_notes: `Source [${s.n}] ${s.uri}` })) };
     }
+    return this.writeDeck(topic, deck, sources, mode);
+  },
+  async writeDeck(topic, deck, sources, mode) {
     const blob = await deckToPptx(deck, sources.map(s => `[${s.n}] ${s.title}`));
     const name = `${today()}-${slug(topic)}.pptx`;
     const text = `# ${deck.title}\n\n${deck.subtitle}\n\n` + deck.slides.map((s, i) => `## Slide ${i + 1}: ${s.title}\n${s.bullets.join("\n")}\nNotes: ${s.speaker_notes}`).join("\n\n");
     const docId = await this.saveOutput(name, blob, text, deck.title, "presentation");
-    return { path: name, name, download: URL.createObjectURL(blob), slides: deck.slides.length, sources, mode, doc_id: docId };
+    return { path: name, name, download: URL.createObjectURL(blob), slides: deck.slides.length, sources, mode, ai: aiLabel(), doc_id: docId };
+  },
+  // Claude-app mode: build the file from the reply the user pasted back.
+  async saveWritten(topic, text, format, sources = []) {
+    text = String(text || "").trim(); if (!text) throw new Error("Paste Claude's reply first");
+    if (format === "pptx") {
+      const deck = parseDeckMarkdown(text, topic);
+      if (!deck.slides.length) throw new Error("No slides found: each slide should start with “## ” and its title");
+      return { ...(await this.writeDeck(topic, deck, sources, "claude_app")), ai: "Claude app" };
+    }
+    return { ...(await this.writeDocument(topic, format === "md" ? "md" : "docx", text, sources, "claude_app")), ai: "Claude app" };
   },
   async enrich(limit = 20) {
     let done = 0; const errors = [];
@@ -1337,7 +1516,7 @@ const Brain = {
       try {
         const r = await llmJSON(ENRICH_SYSTEM, `Title: ${d.title}\n\n${d.text.slice(0, 40000)}`, ENRICH_SCHEMA, 4000);
         Object.assign(d, { summary: r.summary, tags: r.tags, entities: r.entities }); this.dirty.add(d.id); done++;
-      } catch (e) { errors.push((explainError(e)).message); break; }
+      } catch (e) { errors.push(e instanceof Handoff ? "Summarising runs inside the app: choose Claude (API key) or Local AI" : explainError(e).message); break; }
     }
     this.linkEntities(); await this.save();
     return { enriched: done, errors };
@@ -1378,7 +1557,7 @@ const Brain = {
   status() {
     const stats = { documents: this.docs.size, links: this.links.length, enriched: [...this.docs.values()].filter(d => d.summary).length };
     const count = name => [...this.docs.values()].filter(d => d.source === name).length;
-    return { stats, sync: this.sync, claude_configured: !!settings.get("apiKey"), model: settings.get("model", "claude-opus-5"), persistent: DB.persistent,
+    return { stats, sync: this.sync, claude_configured: !!settings.get("apiKey"), ai: { ...aiSettings(), label: aiLabel() }, model: settings.get("model", "claude-opus-5"), persistent: DB.persistent,
       canPickFolders: "showDirectoryPicker" in window,
       needsPermission: this.sources.filter(s => s.mode === "handle" && this.permission.get(s.name) !== "granted").map(s => s.name),
       sources: this.sources.map(s => ({ ...s, documents: count(s.name), permission: this.permission.get(s.name) })) };
@@ -1434,7 +1613,7 @@ function refreshStatus() {
   const s = STATUS.stats, sync = STATUS.sync;
   $("#meta").innerHTML = `<div><span class="dot ${sync.running ? "busy" : "good"}"></span>${sync.running ? "Syncing…" : "Up to date"}</div>
     <div>${s.documents} documents · ${s.links} connections</div>
-    <div><span class="dot ${STATUS.claude_configured ? "good" : "warn"}"></span>Claude ${STATUS.claude_configured ? "connected" : "not connected"}</div>`;
+    <div><span class="dot ${aiStatus(STATUS).ok ? "good" : "warn"}"></span>${esc(aiStatus(STATUS).text)}</div>`;
   $("#syncBanner").style.display = sync.running ? "block" : "none";
   $("#syncText").textContent = sync.running ? (sync.progress || "Reading your files… (the first sync of a large folder can take a few minutes)") : "";
   $("#permBanner").style.display = STATUS.needsPermission.length ? "block" : "none";
@@ -1493,9 +1672,11 @@ async function ask() {
   $("#askBtn").disabled = true;
   try {
     const r = await Brain.ask(q, CHAT.slice(-3));
-    if (r.mode === "claude") CHAT.push({ q, a: r.answer });
+    if (r.mode === "handoff") { handoffAnswer(bot, q, r); $("#askBtn").disabled = false; return; }
+    if (r.mode === "claude" || r.mode === "local") CHAT.push({ q, a: r.answer });
     const bySrc = Object.fromEntries(r.sources.map(s => [s.n, s]));
     bot.innerHTML = (r.mode === "extractive" ? `<p class="small" style="color:var(--warn)">${esc(r.reason)}. Here are the most relevant passages:</p>` : "")
+      + (r.mode === "local" ? `<p class="small muted" style="margin-top:0">💻 Written by ${esc(r.ai)} on this computer</p>` : "")
       + `<div class="md">${md(r.answer)}</div>`
       + (r.sources.length ? `<div class="sources">${r.sources.map(s => `<span class="srcchip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div>` : "");
     $$(".cite", bot).forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } });
@@ -1608,7 +1789,7 @@ $("#modelSel").onchange = e => { settings.set("model", e.target.value); toast("M
 $("#enrichBtn").onclick = async () => {
   const b = $("#enrichBtn"); b.disabled = true; b.textContent = "Working…";
   try { const r = await Brain.enrich(20); toast(r.errors.length ? r.errors[0] : `Enriched ${r.enriched} documents`); } catch (e) { toast(e.message); }
-  b.disabled = false; b.textContent = "🧩 Summarise & connect documents with Claude"; refreshStatus();
+  b.disabled = false; b.textContent = "🧩 Summarise & connect documents with AI"; refreshStatus();
 };
 $("#exportBtn").onclick = () => {
   const blob = new Blob([Brain.exportJSON()], { type: "application/json" }); const a = document.createElement("a");
@@ -1701,7 +1882,7 @@ const DATA = {
   overview: async () => {
     const s = Brain.status(), byKind = {};
     for (const d of Brain.docs.values()) byKind[d.kind] = (byKind[d.kind] || 0) + 1;
-    return { documents: s.stats.documents, links: s.stats.links, byKind, claude: s.claude_configured,
+    return { documents: s.stats.documents, links: s.stats.links, byKind, claude: s.claude_configured, ai: aiStatus(s),
       sources: s.sources.map(x => ({ name: x.name, documents: x.documents, at: x.lastSync, errors: (x.lastStats?.errors || []).length })) };
   },
   create: (type, b) => type === "deck" ? Brain.createDeck(b.topic, b.slides, b.instructions, { docIds: b.doc_ids, useAi: b.use_ai })
@@ -1746,7 +1927,7 @@ async function renderHome() {
   const tile = (n, label, go) => `<div class="tile" tabindex="0" role="button" data-go="${go}"><div class="n">${typeof n === "number" ? n.toLocaleString() : n}</div><div class="l">${label}</div></div>`;
   $("#tiles").innerHTML = tile(o.documents, "documents", "library") + tile(o.links, "connections", "graph")
     + tile(o.byKind.email || 0, "emails", "library:email") + tile(o.sources.length, "sources", "sources")
-    + tile(o.claude ? "✓" : "–", o.claude ? "Claude connected" : "Claude not connected", "sources");
+    + tile(o.ai.icon, o.ai.text, "sources");
   const recent = await DATA.recent(8).catch(() => []);
   $("#homeRecent").innerHTML = recent.length ? recent.map(d => `<div class="list-item" data-doc="${d.id}"><span>${kindIcon(d.kind)}</span><span class="t grow">${esc(d.title)}</span><span class="small muted" style="flex:none">${ago(d.at)}</span></div>`).join("")
     : '<div class="empty" style="padding:20px">Nothing yet. <a href="#" data-goto="sources">Add your first folder →</a></div>';
@@ -1799,7 +1980,10 @@ function renderRefs() {
   $("#refChips").innerHTML = REFS.size ? [...REFS].map(([id, t]) => `<span class="chip on" data-doc="${id}" title="Open">${esc(t)}<button class="x" data-unref="${id}" aria-label="Remove ${esc(t)}">✕</button></span>`).join("")
     : '<span class="small muted">None picked: the brain will choose the most relevant documents for your topic.</span>';
   $$("#refResults [data-ref]").forEach(b => { b.textContent = REFS.has(+b.dataset.ref) ? "✓ Added" : "+ Add"; });
-  const claude = typeof STATUS !== "undefined" && STATUS && STATUS.claude_configured;
+  const claude = typeof STATUS !== "undefined" && STATUS && STATUS.claude_configured, aiMode = (typeof STATUS !== "undefined" && STATUS && STATUS.ai && STATUS.ai.mode) || "claude";
+  if (aiMode !== "claude") { $("#aiHint").innerHTML = aiMode === "local" ? `With AI, your local model (${esc(STATUS.ai.label || "local AI")}) writes from your references on this computer: private and free, but slower than Claude. Without AI, a draft is assembled from the most relevant passages.`
+    : aiMode === "claude_app" ? "With AI, the brain prepares a prompt with your references: paste it into Claude, then paste the reply back and your file is built. Without AI, a draft is assembled from the most relevant passages."
+    : "AI is off, so use <b>Build without AI</b>, or <a href='#' data-goto='sources'>choose an AI</a>."; return; }
   $("#aiHint").innerHTML = claude ? "With AI, Claude writes from your references and cites them. Without AI, a draft is assembled from the most relevant passages. No API call, no cost."
     : "Claude isn't connected, so <b>Generate with AI</b> will fall back to a draft. <a href='#' data-goto='sources'>Add your key</a> for written documents.";
 }
@@ -1827,14 +2011,12 @@ async function runCreate(useAi) {
   if (!topic) { toast("Add a topic first"); $("#cTopic").focus(); return; }
   const body = { topic, format: createType, slides: +$("#cSlides").value || 8, instructions: $("#cInstr").value.trim(), doc_ids: [...REFS.keys()], use_ai: useAi };
   const btns = [$("#createAI"), $("#createNoAI")]; btns.forEach(b => b.disabled = true);
-  $("#createNote").innerHTML = `<span class="spinner"></span> ${useAi ? "Claude is reading your references and writing… (a minute or two)" : "Assembling a draft from your references…"}`;
+  const mode = (STATUS && STATUS.ai && STATUS.ai.mode) || "claude";
+  $("#createNote").innerHTML = `<span class="spinner"></span> ${!useAi ? "Assembling a draft from your references…" : mode === "local" ? "Your local AI is reading your references and writing… (this can take several minutes on a laptop)"
+    : mode === "claude_app" ? "Preparing the prompt for Claude…" : "Claude is reading your references and writing… (a minute or two)"}`;
   try {
-    const r = await DATA.create(createType, body), name = DATA.fileName(r);
-    const how = r.mode === "claude" ? "✨ Written by Claude" : r.mode === "no_ai" ? "📄 Built without AI" : "⚠️ Claude unavailable: draft built without AI";
-    $("#createResults").insertAdjacentHTML("afterbegin", `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${createType === "deck" ? "📊" : "📄"} ${esc(name)}</b>
-      <div class="small muted">${how} · ${r.sources.length} source${r.sources.length === 1 ? "" : "s"} · kept in your Library</div></div>
-      <a class="btn primary" href="${DATA.downloadUrl(r)}" download="${esc(name)}">Download</a></div>
-      <div class="chips" style="margin-top:10px">${r.sources.map(s => `<span class="chip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div></div>`);
+    const r = await DATA.create(createType, body);
+    if (r.mode === "handoff") createHandoff(r, createType, body); else createResultCard(r, createType);
     $("#createNote").textContent = "";
   } catch (e) { $("#createNote").textContent = "Failed: " + e.message; }
   btns.forEach(b => b.disabled = false);
@@ -1937,7 +2119,10 @@ $("#briefBtn").onclick = async () => {
   const b = $("#briefBtn"); b.disabled = true; $("#digestBrief").innerHTML = '<div class="brief"><span class="spinner"></span> Reading what\'s new…</div>';
   try {
     const d = await DATA.digest(+$("#digestDays").value, true);
-    if (!d.briefing) { $("#digestBrief").innerHTML = `<div class="brief small" style="color:var(--warn)">${esc(d.error || "Claude isn't connected")}. Add your key under Sources &amp; settings for a written briefing.</div>`; return; }
+    if (d.mode === "handoff") { $("#digestBrief").innerHTML = '<div class="brief">' + handoffCard(d.handoff, { step: "Paste Claude's briefing below to read it here", placeholder: "Paste Claude's briefing here…", button: "Show briefing",
+      run: async text => { const bySrc = Object.fromEntries(d.sources.map(s => [s.n, s])); $("#digestBrief").innerHTML = `<div class="brief md">${md(text)}</div>`;
+        $$("#digestBrief .cite").forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } }); } }) + "</div>"; return; }
+    if (!d.briefing) { $("#digestBrief").innerHTML = `<div class="brief small" style="color:var(--warn)">${esc(d.error || "No AI is available")}. <a href="#" data-goto="sources">Choose an AI</a> under Sources &amp; settings for a written briefing.</div>`; return; }
     const bySrc = Object.fromEntries(d.sources.map(s => [s.n, s]));
     $("#digestBrief").innerHTML = `<div class="brief md">${md(d.briefing)}</div>`;
     $$("#digestBrief .cite").forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } });
@@ -1973,6 +2158,141 @@ $("#colDelete").onclick = async () => {
 };
 const createShowBase = show;
 show = view => { createShowBase(view); if (view === "create") loadCollections(); };
+
+
+Object.assign(DATA, {  // v0.4: AI settings live in this browser
+  aiSettings: async () => ({ ...aiSettings(), label: aiLabel(), claude_configured: !!settings.get("apiKey") }),
+  setAi: async b => { settings.set("aiMode", b.mode); if (b.mode === "local") { settings.set("localProvider", b.local_provider); settings.set("localUrl", b.local_url); settings.set("localModel", b.local_model); } return { ...aiSettings(), label: aiLabel() }; },
+  localModels: async (provider, url) => { try { return { models: await localModels(provider, url) }; } catch (e) { return { models: [], error: e.message }; } },
+  testAi: async () => { try { return { ok: true, reply: (await llmText("You are a helpful assistant.", "Reply with just the word: ready", 50)).slice(0, 200), label: aiLabel() }; }
+    catch (e) { return { ok: false, error: e instanceof Handoff ? "Nothing to test: the Claude app mode prepares prompts for you to paste" : explainError(e).message, label: aiLabel() }; } },
+  fromReply: (topic, text, format, sources) => Brain.saveWritten(topic, text, format, sources),
+});
+
+// ===================== v0.4: choose the AI (Claude API, local AI, Claude app, off) =====================
+const LOCAL_URLS = { ollama: "http://localhost:11434", openai: "http://localhost:1234/v1" };
+let AI = { mode: "claude", label: "Claude" };
+function aiStatus(st) {
+  const a = (st && st.ai) || { mode: "claude" };
+  if (a.mode === "local") return { ok: true, icon: "💻", text: a.label || "Local AI" };
+  if (a.mode === "claude_app") return { ok: true, icon: "💬", text: "Claude app (copy & paste)" };
+  if (a.mode === "off") return { ok: false, icon: "⏸", text: "AI off" };
+  return st && st.claude_configured ? { ok: true, icon: "✓", text: "Claude connected" } : { ok: false, icon: "–", text: "Claude not connected" };
+}
+function aiPanels() {
+  const m = ($$("#aiModes input").find(i => i.checked) || {}).value || "claude";
+  $("#aiClaude").hidden = m !== "claude"; $("#aiLocal").hidden = m !== "local"; $("#aiApp").hidden = m !== "claude_app";
+  $$("#aiModes .ai-mode").forEach(l => l.classList.toggle("on", l.querySelector("input").checked));
+  $("#localUrl").placeholder = LOCAL_URLS[$("#localProvider").value];
+  return m;
+}
+async function loadAi() {
+  try { AI = await DATA.aiSettings(); } catch (e) { return; }
+  $$("#aiModes input").forEach(i => { i.checked = i.value === AI.mode; });
+  $("#localProvider").value = AI.local_provider || "ollama"; $("#localUrl").value = AI.local_url || "";
+  if (AI.local_model && !$$("#localModel option").some(o => o.value === AI.local_model))
+    $("#localModel").insertAdjacentHTML("beforeend", `<option>${esc(AI.local_model)}</option>`);
+  $("#localModel").value = AI.local_model || "";
+  aiPanels();
+  if (AI.mode === "local") loadModels();
+  if ($("#desktopState") && AI.claude_desktop) $("#desktopState").innerHTML = AI.claude_desktop.connected
+    ? '<span class="dot good"></span>Claude Desktop is connected. In Claude, ask e.g. “Search my second brain for Acme pricing and draft a brief”.'
+    : AI.claude_desktop.app_found ? "Let the Claude desktop app search your brain and save documents directly."
+    : "Claude Desktop doesn't seem to be installed yet (claude.ai/download). You can still connect it now.";
+}
+async function saveAi() {
+  const body = { mode: aiPanels(), local_provider: $("#localProvider").value, local_url: $("#localUrl").value.trim(), local_model: $("#localModel").value };
+  try { AI = { ...AI, ...(await DATA.setAi(body)) }; await refreshStatus(); renderRefs(); toast("AI: " + aiStatus(STATUS).text); }
+  catch (e) { toast(e.message, 6000); }
+}
+let localToken = 0;  // the latest action (find models / test) owns the status line
+async function loadModels() {
+  const token = ++localToken;
+  $("#localState").innerHTML = '<span class="spinner"></span> Looking for installed models…';
+  const r = await DATA.localModels($("#localProvider").value, $("#localUrl").value.trim()).catch(e => ({ models: [], error: e.message }));
+  if (token !== localToken) return;
+  const cur = $("#localModel").value || AI.local_model || "";
+  $("#localModel").innerHTML = '<option value="">Automatic (first installed model)</option>' + r.models.map(m => `<option>${esc(m)}</option>`).join("");
+  if (cur && r.models.includes(cur)) $("#localModel").value = cur;
+  $("#localState").innerHTML = r.error ? `<span class="dot warn"></span>${esc(r.error)}`
+    : r.models.length ? `<span class="dot good"></span>Connected: ${r.models.length} model${r.models.length > 1 ? "s" : ""} installed.`
+    : '<span class="dot warn"></span>Connected, but no models are installed yet (see the set-up steps below).';
+}
+$("#aiModes").addEventListener("change", saveAi);
+$("#localProvider").onchange = () => { $("#localUrl").value = ""; aiPanels(); loadModels(); saveAi(); };
+$("#localUrl").onchange = () => { loadModels(); saveAi(); };
+$("#localModel").onchange = saveAi;
+$("#localRefresh").onclick = loadModels;
+$("#localTest").onclick = async () => {
+  const b = $("#localTest"); b.disabled = true; await saveAi();
+  const token = ++localToken;
+  $("#localState").innerHTML = '<span class="spinner"></span> Asking your local model (the first answer can take a minute while it loads)…';
+  const r = await DATA.testAi().catch(e => ({ ok: false, error: e.message }));
+  if (token === localToken) $("#localState").innerHTML = r.ok ? `<span class="dot good"></span>It works: ${esc(r.label)} replied “${esc(r.reply)}”.` : `<span class="dot warn"></span>${esc(r.error)}`;
+  b.disabled = false;
+};
+if ($("#desktopConnect")) $("#desktopConnect").onclick = async () => {
+  try { const r = await DATA.connectDesktop(); toast("Connected. Quit and reopen Claude Desktop to use your brain there.", 8000); AI.claude_desktop = r; loadAi(); }
+  catch (e) { toast(e.message, 8000); }
+};
+const aiShowBase = show;
+show = view => { aiShowBase(view); if (view === "sources") loadAi(); };
+
+// ---- Claude-app hand-off: copy the prepared prompt, paste Claude's reply back
+const HANDOFFS = [];
+function handoffCard(prompt, reply) {
+  const i = HANDOFFS.push({ prompt, reply }) - 1;
+  return `<div class="handoff"><div><b>💬 Ready for Claude</b> <span class="small muted">· your instructions and sources are in the prompt</span></div>
+    <ol class="small ho-steps"><li><b>Copy</b> the prompt</li><li>Paste it into Claude (claude.ai or the Claude app) and send it</li>${reply ? `<li>${reply.step}</li>` : ""}</ol>
+    <div class="row"><button class="btn small primary" data-ho-copy="${i}">📋 Copy prompt</button><a class="btn small" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude ↗</a>
+      <details class="small"><summary>Show the prompt (${Math.max(1, Math.round(prompt.length / 1000))}k characters)</summary><pre class="ho-pre">${esc(prompt)}</pre></details></div>
+    ${reply ? `<textarea id="hoReply${i}" rows="5" placeholder="${esc(reply.placeholder)}" aria-label="Claude's reply"></textarea>
+      <div class="row" style="margin-top:8px"><button class="btn small primary" data-ho-build="${i}">${esc(reply.button)}</button><span class="small muted" id="hoNote${i}"></span></div>` : ""}</div>`;
+}
+document.addEventListener("click", async e => {
+  const c = e.target.closest("[data-ho-copy]"), b = e.target.closest("[data-ho-build]");
+  if (c) toast((await copyText(HANDOFFS[+c.dataset.hoCopy].prompt)) ? "Prompt copied: paste it into Claude" : "Couldn't copy: open “Show the prompt” and copy it");
+  if (b) {
+    const i = b.dataset.hoBuild, text = $("#hoReply" + i).value.trim();
+    if (!text) { toast("Paste Claude's reply first"); $("#hoReply" + i).focus(); return; }
+    const note = $("#hoNote" + i); b.disabled = true; note.innerHTML = '<span class="spinner"></span>';
+    try { await HANDOFFS[+i].reply.run(text); note.textContent = ""; }  // the card may be gone by now: that's fine
+    catch (err) { note.textContent = err.message; }
+    b.disabled = false;
+  }
+});
+function renderAnswer(bot, q, r) {
+  const bySrc = Object.fromEntries(r.sources.map(s => [s.n, s]));
+  bot.innerHTML = (r.mode === "local" ? `<p class="small muted" style="margin-top:0">💻 Written by ${esc(r.ai || "local AI")} on this computer</p>` : "")
+    + (r.mode === "claude_app" ? '<p class="small muted" style="margin-top:0">💬 Written in the Claude app</p>' : "")
+    + `<div class="md">${md(r.answer)}</div>`
+    + (r.sources.length ? `<div class="sources">${r.sources.map(s => `<span class="srcchip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div>` : "");
+  $$(".cite", bot).forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } });
+  bot.insertAdjacentHTML("beforeend", answerActions(q, r));
+}
+function handoffAnswer(bot, q, r) {
+  bot.innerHTML = handoffCard(r.handoff, { step: "Paste Claude's answer below to keep it in this conversation", placeholder: "Paste Claude's answer here…", button: "Show answer",
+    run: async text => { const a = { answer: text, sources: r.sources, mode: "claude_app" }; CHAT.push({ q, a: text }); renderAnswer(bot, q, a); } })
+    + (r.sources.length ? `<div class="sources">${r.sources.map(s => `<span class="srcchip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div>` : "");
+}
+function createResultCard(r, type) {
+  const name = DATA.fileName(r);
+  const how = r.mode === "claude" ? "✨ Written by Claude" : r.mode === "local" ? `💻 Written by ${esc(r.ai || "local AI")}` : r.mode === "claude_app" ? "💬 Written in the Claude app"
+    : r.mode === "no_ai" ? "📄 Built without AI" : "⚠️ AI unavailable: draft built without AI";
+  $("#createResults").insertAdjacentHTML("afterbegin", `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${type === "deck" ? "📊" : "📄"} ${esc(name)}</b>
+      <div class="small muted">${how} · ${r.sources.length} source${r.sources.length === 1 ? "" : "s"} · kept in your Library</div></div>
+      <a class="btn primary" href="${DATA.downloadUrl(r)}" download="${esc(name)}">Download</a></div>
+      <div class="chips" style="margin-top:10px">${r.sources.map(s => `<span class="chip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div></div>`);
+}
+function createHandoff(r, type, body) {
+  const deck = type === "deck", fmt = deck ? "pptx" : body.format;
+  const card = document.createElement("div"); card.className = "card";
+  card.innerHTML = `<div class="small muted" style="margin-bottom:8px"><b>${deck ? "📊" : "📄"} ${esc(body.topic)}</b> · ${r.sources.length} source${r.sources.length === 1 ? "" : "s"}</div>`
+    + handoffCard(r.handoff, { step: `Paste Claude's reply below and press <b>Build ${deck ? "the deck" : "the document"}</b>`, placeholder: deck ? "Paste Claude's deck outline here (# Title, ## Slide titles, - bullets, Notes: …)" : "Paste Claude's document here…",
+      button: deck ? "📊 Build the deck" : fmt === "docx" ? "📄 Build the Word document" : "📄 Save the document",
+      run: async text => { const made = await DATA.fromReply(body.topic, text, fmt, r.sources); card.remove(); createResultCard(made, type); toast("Built from Claude's reply and kept in your Library"); refreshStatus(); } });
+  $("#createResults").prepend(card);
+}
 
 // ---------- boot ----------
 (async () => {

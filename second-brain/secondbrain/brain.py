@@ -15,8 +15,8 @@ from . import graph
 from .config import BrainConfig, load_config
 from .connectors import Item
 from .indexer import SyncStats, index_item, refresh_links, sync_source
-from .llm import LLM, LLMUnavailable
-from .render import Deck, Slide, deck_to_pptx, markdown_to_docx
+from .llm import Handoff, LLMUnavailable, SwitchableLLM, handoff_text
+from .render import Deck, Slide, deck_to_pptx, markdown_to_docx, parse_deck_markdown
 from .search import GENERATED_SOURCES, Hit, search
 from .store import Store
 from .text import tokenize
@@ -39,6 +39,20 @@ End with a '## Sources' section listing each cited source as '[n] Title'. Output
 DECK_SYSTEM = """You design executive slide decks grounded in the user's knowledge base. Each slide has an action title
 (a full-sentence takeaway, not a topic label), 3-5 concise bullets (indent sub-points with two spaces), and speaker
 notes that cite sources as [n]. Tell one clear storyline: situation, complication, insight, recommendation, next steps."""
+
+# Claude-app mode: the deck comes back as pasted text, so ask for an outline we can turn into PowerPoint.
+DECK_OUTLINE = """Reply with only the deck, in exactly this Markdown format (no other text):
+
+# Deck title
+Subtitle line
+
+## Slide 1 action title (a full-sentence takeaway)
+- bullet
+- bullet
+Notes: speaker notes citing sources as [n]
+
+## Slide 2 action title
+..."""
 
 ENRICH_SYSTEM = """You catalogue documents for a personal knowledge base. Return a 2-3 sentence summary, 3-8 short
 lowercase topic tags, and the named entities (people, organisations, products, projects, places) mentioned."""
@@ -75,10 +89,22 @@ def format_context(hits: list[Hit], max_chars: int = 60000) -> tuple[str, list[d
 
 
 class Brain:
-    def __init__(self, config: BrainConfig | None = None, llm: LLM | None = None):
+    def __init__(self, config: BrainConfig | None = None, llm=None):
         self.config = config or load_config()
         self.store = Store(self.config.db_path)
-        self.llm = llm or LLM(self.config.model, self.config.effort)
+        self.llm = llm or SwitchableLLM(self.config.model, self.config.effort)
+
+    # ---- which AI is answering ---------------------------------------------
+    @property
+    def ai_kind(self) -> str:
+        return getattr(self.llm, "kind", "claude")
+
+    @property
+    def ai_label(self) -> str:
+        return getattr(self.llm, "label", "Claude")
+
+    def _format(self, hits: list[Hit], max_chars: int = 60000) -> tuple[str, list[dict[str, Any]]]:
+        return format_context(hits, min(max_chars, getattr(self.llm, "context_chars", max_chars)))
 
     # ---- ingest ----------------------------------------------------------
     def sync(self, source_name: str | None = None, on_progress=None) -> list[SyncStats]:
@@ -114,6 +140,9 @@ class Brain:
             try:
                 result = self.llm.structured(
                     ENRICH_SYSTEM, f"Title: {doc.title}\n\n{doc.text[:40000]}", Enrichment, max_tokens=4000)
+            except Handoff:
+                errors.append("summarising runs inside the app: switch AI to Claude (API key) or Local AI")
+                break
             except LLMUnavailable as exc:
                 errors.append(str(exc))
                 break
@@ -161,7 +190,7 @@ class Brain:
         history = [t for t in (history or []) if t.get("q")][-3:]
         # Follow-ups ("and the risks?") are searched together with the previous question.
         hits = self._context_hits(f"{question} {history[-1]['q']}" if history else question, k)
-        context, sources = format_context(hits)
+        context, sources = self._format(hits)
         if not hits:
             return {"answer": "Nothing in the brain matches that yet. Add sources or `remember` some notes.",
                     "sources": [], "mode": "empty"}
@@ -171,12 +200,13 @@ class Brain:
                   + f"Question: {question}")
         try:
             return {"answer": self.llm.text(ANSWER_SYSTEM, prompt, max_tokens=16000), "sources": sources,
-                    "mode": "claude"}
+                    "mode": self.ai_kind, "ai": self.ai_label}
+        except Handoff as h:
+            return {"answer": "", "handoff": h.text, "sources": sources, "mode": "handoff"}
         except LLMUnavailable as exc:
             passages = "\n\n".join(f"[{s['n']}] {s['title']}\n" + next(h.text[:500] for h in hits if h.doc_id == s["doc_id"])
                                    for s in sources)
-            return {"answer": f"(Claude unavailable: {exc}. Most relevant passages:)\n\n{passages}",
-                    "sources": sources, "mode": "extractive"}
+            return {"answer": passages, "sources": sources, "mode": "extractive", "reason": f"AI unavailable: {exc}"}
 
     def whats_new(self, days: int = 7, use_ai: bool = False, limit: int = 40) -> dict[str, Any]:
         """What arrived or changed recently (excluding the brain's own creations), optionally briefed by Claude."""
@@ -194,12 +224,14 @@ class Brain:
         }
         if use_ai and docs:
             hits = [Hit(d.id, 0, d.title, d.uri, d.source, d.summary or d.text[:1500], 0.0, d.doc_date) for d in docs[:limit]]
-            context, sources = format_context(hits, max_chars=50000)
+            context, sources = self._format(hits, max_chars=50000)
             out["sources"] = sources
             try:
                 out["briefing"] = self.llm.text(DIGEST_SYSTEM, f"<documents>\n{context}\n</documents>\n\n"
                                                 f"Brief me on the last {days} days.", max_tokens=8000)
-                out["mode"] = "claude"
+                out["mode"], out["ai"] = self.ai_kind, self.ai_label
+            except Handoff as h:
+                out["mode"], out["handoff"] = "handoff", h.text
             except LLMUnavailable as exc:
                 out["mode"], out["error"] = "list", str(exc)
         return out
@@ -244,7 +276,7 @@ class Brain:
         hits = self.reference_hits(doc_ids, topic) if doc_ids else self._context_hits(topic, k)
         if not hits:
             raise ValueError("no reference material: pick documents, or add sources to the brain first")
-        context, sources = format_context(hits)
+        context, sources = self._format(hits)
         return hits, context, sources
 
     @staticmethod
@@ -260,18 +292,23 @@ class Brain:
             prompt = (f"<sources>\n{context}\n</sources>\n\nWrite a document about: {topic}\n"
                       f"{'Additional instructions: ' + instructions if instructions else ''}")
             try:
-                markdown, mode = self.llm.text(DOC_SYSTEM, prompt), "claude"
+                markdown, mode = self.llm.text(DOC_SYSTEM, prompt), self.ai_kind
+            except Handoff as h:
+                return {"mode": "handoff", "handoff": h.text, "sources": sources, "topic": topic, "format": fmt}
             except LLMUnavailable as exc:
-                mode, note = "extractive", f"Claude unavailable ({exc})"
+                mode, note = "extractive", f"AI unavailable ({exc})"
         if markdown is None:
             note = "Draft assembled from your reference documents (no AI)" if mode == "no_ai" else note
             markdown = f"# {topic}\n\n> {note}.\n\n" + "\n\n".join(
                 f"## {s['title']}\n\n" + "\n\n".join(p.strip()[:1200] for p in self._passages(hits, s)) + f" [{s['n']}]"
                 for s in sources)
             markdown += "\n\n## Sources\n\n" + "\n".join(f"- [{s['n']}] {s['title']}" for s in sources)
+        return self._write_document(topic, markdown, fmt, sources, mode)
+
+    def _write_document(self, topic: str, markdown: str, fmt: str, sources: list[dict], mode: str) -> dict[str, Any]:
         md_path = self._output_path(topic, ".md")
         md_path.write_text(markdown, encoding="utf-8")
-        out = {"path": str(md_path), "format": "md", "sources": sources, "mode": mode}
+        out = {"path": str(md_path), "format": "md", "sources": sources, "mode": mode, "ai": self.ai_label}
         if fmt == "docx":
             docx_path = markdown_to_docx(markdown, self._output_path(topic, ".docx"), self.config.doc_template)
             out.update(path=str(docx_path), format="docx", markdown_path=str(md_path))
@@ -286,7 +323,10 @@ class Brain:
             prompt = (f"<sources>\n{context}\n</sources>\n\nCreate a {slides}-slide deck (excluding the title slide) "
                       f"about: {topic}\n{'Additional instructions: ' + instructions if instructions else ''}")
             try:
-                deck, mode = self.llm.structured(DECK_SYSTEM, prompt, Deck), "claude"
+                deck, mode = self.llm.structured(DECK_SYSTEM, prompt, Deck), self.ai_kind
+            except Handoff:
+                return {"mode": "handoff", "handoff": handoff_text(DECK_SYSTEM + "\n\n" + DECK_OUTLINE, prompt),
+                        "sources": sources, "topic": topic, "format": "pptx"}
             except LLMUnavailable:
                 mode = "extractive"
         if deck is None:
@@ -297,15 +337,37 @@ class Brain:
             deck = Deck(title=topic, subtitle="Draft built from your reference documents",
                         slides=[Slide(title=s["title"], bullets=bullets(s), speaker_notes=f"Source [{s['n']}] {s['uri']}")
                                 for s in sources[:slides]])
+        return self._write_deck(topic, deck, sources, mode)
+
+    def _write_deck(self, topic: str, deck: Deck, sources: list[dict], mode: str) -> dict[str, Any]:
         path = deck_to_pptx(deck, self._output_path(topic, ".pptx"),
                             [f"[{s['n']}] {s['title']}" for s in sources], self.config.deck_template)
-        return {"path": str(path), "format": "pptx", "slides": len(deck.slides), "sources": sources, "mode": mode}
+        return {"path": str(path), "format": "pptx", "slides": len(deck.slides), "sources": sources, "mode": mode,
+                "ai": self.ai_label}
+
+    def save_written(self, topic: str, text: str, fmt: str = "docx",
+                     sources: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        """Turn text Claude wrote elsewhere (pasted from the Claude app, or sent by Claude Desktop over MCP)
+        into a file in the outputs folder: ``md``/``docx`` from Markdown, ``pptx`` from a deck outline."""
+        text = (text or "").strip()
+        if not text:
+            raise ValueError("paste Claude's reply first")
+        sources = [{"n": int(s.get("n", i + 1)), "doc_id": s.get("doc_id"), "title": str(s.get("title", "")),
+                    "uri": s.get("uri", "")} for i, s in enumerate(sources or [])]
+        if fmt == "pptx":
+            deck = parse_deck_markdown(text, fallback_title=topic)
+            if not deck.slides:
+                raise ValueError("no slides found: each slide should start with '## ' followed by its title")
+            return {**self._write_deck(topic, deck, sources, "claude_app"), "ai": "Claude app"}
+        return {**self._write_document(topic, text, fmt if fmt in ("md", "docx") else "docx", sources, "claude_app"),
+                "ai": "Claude app"}
 
     # ---- info ------------------------------------------------------------
     def status(self) -> dict[str, Any]:
         return {"stats": self.store.stats(), "sources": self.store.source_status(),
                 "configured_sources": [{"name": s.name, "type": s.type} for s in self.config.all_sources()],
-                "db": str(self.config.db_path), "outputs": str(self.config.output_dir), "model": self.config.model}
+                "db": str(self.config.db_path), "outputs": str(self.config.output_dir), "model": self.config.model,
+                "ai": {"mode": self.ai_kind, "label": self.ai_label}}
 
     def graph(self) -> dict[str, Any]:
         return graph.export_graph(self.store)

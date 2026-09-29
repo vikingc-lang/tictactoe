@@ -87,6 +87,21 @@ def load_secrets(data_dir: Path) -> None:
             os.environ.setdefault(key.strip(), value.strip())
 
 
+AI_SETTING_KEYS = ("BRAIN_AI_MODE", "BRAIN_LOCAL_PROVIDER", "BRAIN_LOCAL_URL", "BRAIN_LOCAL_MODEL")
+
+
+def refresh_ai_settings(data_dir: Path) -> None:
+    """Re-read the AI choice from secrets.env, for long-running processes (the MCP server) started before
+    the user changed it in the app."""
+    path = data_dir / SECRETS_FILE
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, _, value = line.partition("=")
+        if key.strip() in AI_SETTING_KEYS:
+            os.environ[key.strip()] = value.strip()
+
+
 def save_secret(data_dir: Path, key: str, value: str) -> None:
     """Store a secret in ``<data_dir>/secrets.env`` (owner-only permissions) and apply it now."""
     path = data_dir / SECRETS_FILE

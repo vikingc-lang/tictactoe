@@ -1,3 +1,3 @@
 """Second Brain: a personal knowledge system that connects your sources, keeps learning, and creates artifacts."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

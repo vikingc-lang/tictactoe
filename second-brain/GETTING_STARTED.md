@@ -13,7 +13,9 @@ The brain reads them but never moves or changes them.
    Drive, and so on), and allow the browser to view it. You can also drag files onto the page.
 4. Emails: drop `.eml` files or a `.mbox` archive (Gmail → takeout.google.com → Mail) onto the page. Each
    email and its attachments become searchable and linked.
-5. Paste your Claude API key under **Claude connection** to get written answers, documents and decks.
+5. Choose your AI under **AI engine**: a Claude API key, **Local AI** (a free model on your laptop, see
+   [section 5](#5-choose-your-ai-for-written-answers-documents-and-decks)), the **Claude app** (copy and paste,
+   on your Claude subscription), or Off.
 6. Use Ask, Search, Library, Connections, Create and Remember.
 
 Your brain is saved inside that browser. Open the **same file in the same browser** to find it again. When you
@@ -111,16 +113,48 @@ the sign-in before saving, and the password is stored only on your computer.
 **Tip:** start with a year of mail (the default *Days back* is 365), or narrow it to a client with a
 search such as `FROM "acme.com"` in `brain.toml`.
 
-## 5. Connect Claude (for written answers, documents and decks)
+## 5. Choose your AI (for written answers, documents and decks)
 
-1. Create an API key at <https://console.anthropic.com> (Settings → API keys).
-2. In the app, open **Sources & settings → Claude connection**, paste the key and click **Save key**.
+Open **Sources & settings → AI engine** and pick one. You can switch at any time; it applies immediately.
+Search, connections and **Build without AI** never need AI.
 
-The key is stored only on your computer, in `~/.secondbrain/secrets.env`. Without a key you can still
-search, browse and see connections.
+| Option | Best for | What you need |
+|---|---|---|
+| ☁️ **Claude (API key)** | Best writing and citations | A key from <https://console.anthropic.com> (Settings → API keys), pay per use. Paste it and click **Save key**. |
+| 💻 **Local AI** | Confidential client material, working offline, no running cost | Ollama or LM Studio on your laptop (steps below). 16 GB of RAM or more recommended. |
+| 💬 **Claude app** | You pay for Claude Pro/Max/Team but have no API key | Nothing to install. See below. |
+| ⏸️ **Off** | Search and browse only | Nothing. |
 
-Optionally, click **🧩 Summarise & connect documents with Claude**. It adds summaries and tags, and links
-documents that mention the same people and companies. Each click processes 20 documents and uses API credits.
+**Local AI with Ollama (about 10 minutes, one time)**
+
+1. Install Ollama from <https://ollama.com/download> and open it.
+2. Download a model. Open Terminal (Mac) or Command Prompt (Windows) and run `ollama pull llama3.1:8b`
+   (about 5 GB). Alternatives: `qwen3:8b`, or `gemma3:12b` if you have 16 GB of RAM or more.
+3. In the app, choose **💻 Local AI**, press **↻ Find models**, pick the model and press **Test**.
+4. *Single HTML file only:* the browser needs Ollama's permission. On a Mac run
+   `launchctl setenv OLLAMA_ORIGINS "*"` in Terminal. On Windows add a user environment variable
+   `OLLAMA_ORIGINS` = `*`. Then quit and reopen Ollama. The full app doesn't need this.
+
+Prefer buttons to commands? Use **LM Studio** (<https://lmstudio.ai>): download a model, open the *Developer*
+tab, start the server, and choose "LM Studio" in the app (turn on *Enable CORS* there for the HTML file).
+Local models are smaller than Claude: expect simpler writing, the odd citation slip, and a few minutes per
+document on a laptop. Nothing leaves your computer.
+
+**Claude app (your subscription, no API key)**
+
+When you press an AI button (Ask, Brief me, Generate with AI), the brain prepares a prompt that includes
+your instructions and the right passages from your documents. Click **📋 Copy prompt**, paste it into Claude
+(claude.ai or the Claude app), then paste Claude's reply back into the box. Answers appear in the
+conversation, and documents and decks are built as Word or PowerPoint files and kept in your Library.
+
+With the full app you can go further: click **🔌 Connect Claude Desktop**, then quit and reopen Claude
+Desktop. Claude can then search your brain, read documents and save the documents and decks it writes, all
+on your subscription. Try: *"Search my second brain for Acme pricing and draft a one-page brief."*
+
+Your key and choices are stored only on your computer, in `~/.secondbrain/secrets.env` (the HTML file keeps
+them in the browser). Optionally, click **🧩 Summarise & connect documents with AI**. It adds summaries and
+tags, and links documents that mention the same people and companies (Claude API or Local AI, 20 documents
+per click).
 
 ## 6. Use it
 

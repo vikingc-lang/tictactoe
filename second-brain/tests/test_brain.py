@@ -728,3 +728,210 @@ def test_app_stays_responsive_while_claude_works(workspace, monkeypatch):
         t.join()
     finally:
         server.shutdown()
+
+
+# ---- AI modes: local AI (Ollama / OpenAI-compatible), Claude app hand-off, off ---------------------------
+
+class _FakeLocalAI:
+    """A stand-in for Ollama (native API) and LM Studio (OpenAI-compatible API) on localhost."""
+
+    def __init__(self, reject_schema=False):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        self.requests = []
+        fake = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _json(self, code, payload):
+                body = json.dumps(payload).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):  # noqa: N802
+                if self.path == "/api/tags":
+                    return self._json(200, {"models": [{"name": "qwen3:8b"}, {"name": "llama3.1:8b"}]})
+                if self.path == "/v1/models":
+                    return self._json(200, {"data": [{"id": "local-model"}]})
+                self._json(404, {"error": "nope"})
+
+            def do_POST(self):  # noqa: N802
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                fake.requests.append((self.path, body))
+                wants_json = "format" in body or "response_format" in body or "JSON schema" in body["messages"][0]["content"]
+                deck = {"title": "Ops", "subtitle": "s", "slides": [{"title": "Automate Lyon", "bullets": ["a"],
+                                                                      "speaker_notes": "[1]"}]}
+                content = ("<think>hmm</think>```json\n" + json.dumps(deck) + "\n```") if wants_json else \
+                    "<think>let me see</think>Warehouse automation is planned [1]."
+                if self.path == "/api/chat":
+                    return self._json(200, {"message": {"role": "assistant", "content": content}})
+                if self.path == "/v1/chat/completions":
+                    if reject_schema and "response_format" in body:
+                        return self._json(400, {"error": "response_format not supported"})
+                    return self._json(200, {"choices": [{"message": {"role": "assistant", "content": content}}]})
+                self._json(404, {"error": "nope"})
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+
+
+@pytest.fixture
+def ai_env(monkeypatch):
+    for key in ("BRAIN_AI_MODE", "BRAIN_LOCAL_PROVIDER", "BRAIN_LOCAL_URL", "BRAIN_LOCAL_MODEL"):
+        monkeypatch.setenv(key, "")
+    return monkeypatch
+
+
+def test_local_ai_ollama_answers_and_builds_decks(workspace, ai_env):
+    from secondbrain.llm import LocalLLM
+
+    fake = _FakeLocalAI()
+    try:
+        cfg, _ = workspace
+        ai_env.setenv("BRAIN_AI_MODE", "local")
+        ai_env.setenv("BRAIN_LOCAL_URL", fake.url)
+        brain = Brain(cfg)
+        brain.sync()
+        assert brain.ai_kind == "local" and brain.ai_label == "Local AI (auto)"
+        r = brain.ask("What about warehouse automation?")
+        assert r["mode"] == "local" and r["answer"] == "Warehouse automation is planned [1]."   # <think> removed
+        path, body = fake.requests[-1]
+        assert path == "/api/chat" and body["model"] == "llama3.1:8b"         # an installed model is picked
+        assert body["options"]["num_ctx"] >= 16384                           # bigger context than Ollama's default
+        assert len(body["messages"][1]["content"]) < 26000                   # context sized for a local model
+        deck = brain.create_deck("Warehouse automation plan", slides=3)
+        assert deck["mode"] == "local" and Path(deck["path"]).exists()
+        assert "format" in fake.requests[-1][1]                              # JSON schema passed to Ollama
+        assert LocalLLM("ollama", fake.url).models() == ["llama3.1:8b", "qwen3:8b"]
+    finally:
+        fake.close()
+
+
+def test_local_ai_openai_compatible_falls_back_without_schema(ai_env):
+    from secondbrain.llm import LocalLLM
+    from secondbrain.render import Deck
+
+    fake = _FakeLocalAI(reject_schema=True)
+    try:
+        llm = LocalLLM("openai", fake.url + "/v1")
+        assert llm.models() == ["local-model"]
+        deck = llm.structured("Make a deck.", "about ops", Deck)
+        assert deck.slides[0].title == "Automate Lyon"
+        paths = [p for p, _ in fake.requests]
+        assert paths == ["/v1/chat/completions", "/v1/chat/completions"]     # retried without response_format
+        assert "response_format" not in fake.requests[-1][1]
+    finally:
+        fake.close()
+
+
+def test_local_ai_not_running_is_explained(ai_env):
+    from secondbrain.llm import LLMUnavailable, LocalLLM
+
+    with pytest.raises(LLMUnavailable, match="cannot reach Ollama.*is it running"):
+        LocalLLM("ollama", "http://127.0.0.1:9", "llama3.1").text("s", "p")
+
+
+def test_claude_app_mode_hands_off_prompts_and_builds_files_from_replies(workspace, ai_env):
+    cfg, _ = workspace
+    ai_env.setenv("BRAIN_AI_MODE", "claude_app")
+    brain = Brain(cfg)
+    brain.sync()
+    r = brain.ask("What about warehouse automation?")
+    assert r["mode"] == "handoff" and "Supply Chain Assessment" in r["handoff"] and "cite them inline" in r["handoff"]
+    before = set(cfg.output_dir.iterdir())
+    doc = brain.create_document("Warehouse automation brief", fmt="docx")
+    assert doc["mode"] == "handoff" and "Write a document about: Warehouse automation brief" in doc["handoff"]
+    assert set(cfg.output_dir.iterdir()) == before                          # nothing written until the reply
+    out = brain.save_written("Warehouse automation brief", "# Ops brief\n\nAutomate Lyon [1].", "docx", doc["sources"])
+    assert out["path"].endswith(".docx") and out["mode"] == "claude_app"
+    assert "Automate Lyon" in "\n".join(p.text for p in docx.Document(out["path"]).paragraphs)
+    deck = brain.create_deck("Warehouse automation plan", slides=2)
+    assert deck["mode"] == "handoff" and "## Slide 1 action title" in deck["handoff"]
+    reply = "# Ops plan\nBoard update\n\n## Automating Lyon pays back in 14 months\n- EUR 300k\nNotes: [1]\n\n## Next\n- pilot"
+    pptx = brain.save_written("Warehouse automation plan", reply, "pptx", deck["sources"])
+    titles = [s.shapes.title.text for s in Presentation(pptx["path"]).slides if s.shapes.title]
+    assert "Automating Lyon pays back in 14 months" in titles and pptx["slides"] == 2
+    with pytest.raises(ValueError):
+        brain.save_written("x", "just prose, no slides", "pptx")
+    assert brain.whats_new(7, use_ai=True)["mode"] == "handoff"
+    assert "Claude app" in brain.enrich(1)["errors"][0] or "switch AI" in brain.enrich(1)["errors"][0]
+
+
+def test_ai_off_and_switching_apply_immediately(workspace, ai_env):
+    cfg, _ = workspace
+    brain = Brain(cfg)
+    brain.sync()
+    ai_env.setenv("BRAIN_AI_MODE", "off")
+    r = brain.ask("warehouse automation?")
+    assert r["mode"] == "extractive" and "switched off" in r["reason"]
+    ai_env.setenv("BRAIN_AI_MODE", "claude_app")
+    assert brain.ask("warehouse automation?")["mode"] == "handoff"             # same Brain, no restart
+
+
+def test_ai_settings_api_and_reply_upload(workspace, ai_env):
+    cfg, _ = workspace
+    ai_env.delenv("BRAIN_API_TOKEN", raising=False)
+    fake = _FakeLocalAI()
+    brain = Brain(cfg)
+    brain.sync()
+    server, base = _serve(brain)
+    try:
+        with pytest.raises(urllib.error.HTTPError):
+            _call(base, "/settings/ai", {"mode": "genius"})
+        _call(base, "/settings/ai", {"mode": "local", "local_provider": "ollama", "local_url": fake.url,
+                                     "local_model": "llama3.1:8b"})
+        status = _call(base, "/status")
+        assert status["ai"]["mode"] == "local" and status["ai"]["label"] == "Local AI (llama3.1:8b)"
+        assert (cfg.data_dir / "secrets.env").read_text().count("BRAIN_AI_MODE=local") == 1
+        assert _call(base, f"/settings/ai/models?provider=ollama&url={fake.url}")["models"] == ["llama3.1:8b", "qwen3:8b"]
+        test = _call(base, "/settings/ai/test", {})
+        assert test["ok"] and "Warehouse" in test["reply"]
+        assert _call(base, "/ask", {"question": "warehouse automation?"})["mode"] == "local"
+        _call(base, "/settings/ai", {"mode": "claude_app"})
+        doc = _call(base, "/create/document", {"topic": "Warehouse automation brief", "format": "docx"})
+        assert doc["mode"] == "handoff" and "download" not in doc
+        made = _call(base, "/create/from-reply", {"topic": "Warehouse automation brief", "text": "# Ops\n\nDone [1].", "format": "docx",
+                                                  "sources": doc["sources"]})
+        assert made["download"].endswith(".docx") and _call(base, made["download"], raw=True)[:2] == b"PK"
+    finally:
+        server.shutdown()
+        fake.close()
+
+
+def test_connect_claude_desktop_keeps_existing_settings(tmp_path):
+    from secondbrain import claude_desktop
+
+    path = tmp_path / "Claude" / "claude_desktop_config.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({"mcpServers": {"gmail": {"command": "x"}}, "theme": "dark"}), encoding="utf-8")
+    assert claude_desktop.status(path) == {"config_path": str(path), "app_found": True, "connected": False}
+    r = claude_desktop.connect(tmp_path / "brain.toml", path)
+    data = json.loads(path.read_text())
+    assert r["connected"] and data["theme"] == "dark" and "gmail" in data["mcpServers"]
+    entry = data["mcpServers"]["second-brain"]
+    assert entry["args"][-1] == "mcp" and str(tmp_path / "brain.toml") in entry["args"]
+    assert path.with_suffix(".json.bak").exists()
+    path.write_text("{broken", encoding="utf-8")
+    with pytest.raises(ValueError, match="isn't valid JSON"):
+        claude_desktop.connect(None, path)
+
+
+def test_mcp_hands_the_writing_to_the_calling_model(workspace, ai_env):
+    from secondbrain.mcp_server import _for_caller
+
+    cfg, _ = workspace
+    ai_env.setenv("BRAIN_AI_MODE", "claude_app")
+    brain = Brain(cfg)
+    brain.sync()
+    r = _for_caller(brain.create_document("Warehouse automation brief", fmt="docx"), "document")
+    assert "prompt" in r and "handoff" not in r and "save_document" in r["next_step"]
+    assert _for_caller({"mode": "claude", "answer": "x"}, "ask") == {"mode": "claude", "answer": "x"}

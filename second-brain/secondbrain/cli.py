@@ -101,6 +101,8 @@ def cmd_digest(args) -> None:
     d = _brain(args).whats_new(args.days, use_ai=args.ai)
     print(f"{d['count']} new or changed in the last {d['days']} days"
           + (": " + ", ".join(f"{n} {k}" for k, n in d["by_kind"].items()) if d["by_kind"] else ""))
+    if d.get("handoff"):
+        _handoff(d["handoff"])
     if d["briefing"]:
         print("\n" + d["briefing"] + "\n")
     elif d.get("error"):
@@ -110,8 +112,17 @@ def cmd_digest(args) -> None:
         print(f"  #{doc['id']:<5} {when}  {doc['title']}  ({doc['source']})")
 
 
+def _handoff(prompt: str, then: str = "") -> None:
+    print("AI is set to the Claude app. Paste everything between the lines into Claude (claude.ai or the desktop app)"
+          + (f", {then}" if then else "") + ":\n" + "-" * 72 + "\n" + prompt + "\n" + "-" * 72)
+
+
 def cmd_ask(args) -> None:
     result = _brain(args).ask(args.question)
+    if result.get("handoff"):
+        return _handoff(result["handoff"])
+    if result.get("reason"):
+        print(f"({result['reason']}. Most relevant passages:)\n")
     print(result["answer"])
     if result["sources"]:
         print("\nSources:")
@@ -149,7 +160,67 @@ def cmd_create(args) -> None:
         result = brain.create_deck(args.topic, args.slides, **opts)
     else:
         result = brain.create_document(args.topic, args.what, **opts)
+    if result.get("handoff"):
+        fmt = "pptx" if args.what == "deck" else args.what
+        pending = _pending_file(brain, args.topic)  # so save-reply knows the format and the numbered sources
+        pending.parent.mkdir(parents=True, exist_ok=True)
+        pending.write_text(json.dumps({"format": fmt, "sources": result["sources"]}), encoding="utf-8")
+        return _handoff(result["handoff"], "save Claude's reply in a text file, then run:\n"
+                                           f"  brain save-reply \"{args.topic}\" --file reply.txt")
     print(f"created {result['path']}")
+
+
+def _pending_file(brain, topic: str) -> Path:
+    import re
+
+    return brain.config.data_dir / "pending" / (re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")[:60] + ".json")
+
+
+def cmd_save_reply(args) -> None:
+    brain = _brain(args)
+    text = sys.stdin.read() if args.file == "-" else Path(args.file).read_text(encoding="utf-8")
+    pending_path = _pending_file(brain, args.topic)
+    pending = json.loads(pending_path.read_text(encoding="utf-8")) if pending_path.is_file() else {}
+    sources = json.loads(args.sources) if args.sources else pending.get("sources")
+    result = brain.save_written(args.topic, text, args.format or pending.get("format", "docx"), sources)
+    pending_path.unlink(missing_ok=True)
+    print(f"created {result['path']}")
+
+
+def cmd_ai(args) -> None:
+    from . import claude_desktop
+    from .config import load_config, save_secret
+    from .llm import LLMUnavailable, LocalLLM, ai_settings
+
+    cfg = load_config(args.config)
+    if args.action == "set":
+        if not args.mode:
+            sys.exit("say which AI: brain ai set claude | local | claude_app | off")
+        if args.mode == "local":
+            save_secret(cfg.data_dir, "BRAIN_LOCAL_PROVIDER", args.provider or "ollama")
+            save_secret(cfg.data_dir, "BRAIN_LOCAL_URL", args.url or "")
+            save_secret(cfg.data_dir, "BRAIN_LOCAL_MODEL", args.model or "")
+        save_secret(cfg.data_dir, "BRAIN_AI_MODE", args.mode)
+    if args.action == "models":
+        s = ai_settings()
+        try:
+            print("\n".join(LocalLLM(args.provider or s["local_provider"], args.url or s["local_url"]).models())
+                  or "no models installed (Ollama: ollama pull llama3.1)")
+        except LLMUnavailable as exc:
+            sys.exit(str(exc))
+        return
+    if args.action == "test":
+        brain = _brain(args)
+        try:
+            print(f"{brain.ai_label}: {brain.llm.text('You are a helpful assistant.', 'Reply with just: ready', 20)}")
+        except LLMUnavailable as exc:
+            sys.exit(f"{brain.ai_label}: {exc}")
+        return
+    if args.action == "connect-desktop":
+        r = claude_desktop.connect(cfg.config_path)
+        print(f"Claude Desktop now has the brain as a connector ({r['config_path']}). Restart Claude Desktop.")
+        return
+    _print({**ai_settings(), "claude_desktop": claude_desktop.status()})
 
 
 def cmd_status(args) -> None:
@@ -252,6 +323,22 @@ def build_parser() -> argparse.ArgumentParser:
     c.set_defaults(fn=cmd_create)
 
     sub.add_parser("status", help="sources and stats").set_defaults(fn=cmd_status)
+
+    sr = sub.add_parser("save-reply", help="turn a reply written in the Claude app into a .docx/.md/.pptx")
+    sr.add_argument("topic")
+    sr.add_argument("--format", choices=["docx", "md", "pptx"], help="default: what `brain create` asked for, else docx")
+    sr.add_argument("--file", default="-", help="file with Claude's reply ('-' reads stdin)")
+    sr.add_argument("--sources", help="numbered sources as JSON (normally remembered from `brain create`)")
+    sr.set_defaults(fn=cmd_save_reply)
+
+    ai = sub.add_parser("ai", help="choose the AI: Claude API, local AI (Ollama/LM Studio), the Claude app, or off")
+    ai.add_argument("action", nargs="?", default="status", choices=["status", "set", "models", "test", "connect-desktop"])
+    ai.add_argument("mode", nargs="?", choices=["claude", "local", "claude_app", "off"], help="for `set`")
+    ai.add_argument("--provider", choices=["ollama", "openai"],
+                    help="local AI server: ollama, or openai for LM Studio and other OpenAI-compatible servers")
+    ai.add_argument("--url", help="local AI address (default http://localhost:11434 or http://localhost:1234/v1)")
+    ai.add_argument("--model", help="local model name, e.g. llama3.1:8b (default: first installed)")
+    ai.set_defaults(fn=cmd_ai)
 
     g = sub.add_parser("graph", help="export the knowledge graph as JSON")
     g.add_argument("--out", default="brain-graph.json")

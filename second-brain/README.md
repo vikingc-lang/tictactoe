@@ -30,6 +30,7 @@ and slide decks from what you know, using Claude.
 | **Easy to use** | A Home dashboard, Ctrl/⌘+K quick find from anywhere, **collections** (save a client's or project's reference documents under a name and reload them in Create), actions on every answer (create from its sources, save to the brain, copy), Library filters by type, and a light/dark theme. |
 | **Plugs into other tools** | **MCP server**: Claude can use the brain alongside Gmail, Calendar, Slack and other MCP servers. **REST API** with bearer-token auth for everything else. |
 | **Stays honest** | Answers and creations are grounded in your original material. The brain's own documents and saved answers stay searchable but are not cited as evidence. Search ignores accents (*Zurich* finds *Zürich*) and keeps short terms like *AI*, *HR* and *Q3*. |
+| **Your choice of AI** | Switch any time: **Claude** (API key), **Local AI** on your laptop (Ollama, LM Studio or any OpenAI-compatible server: private, offline, free), the **Claude app** on your subscription (the brain prepares each prompt with your sources, and builds Word/PowerPoint files from the reply you paste back; the full app also connects **Claude Desktop** in one click), or **Off**. |
 | **Degrades gracefully** | Without Claude credentials, search, linking and sync still work. `ask` returns cited passages, and `create deck` builds an extractive draft. |
 
 ## Quickest start: one HTML file, nothing to install
@@ -81,6 +82,9 @@ brain create deck "Acme pricing strategy" --slides 8 --instructions "board audie
 brain create docx "Ops brief" --docs 12,31,40 --no-ai   # from chosen references, without AI
 brain digest --days 7 --ai          # what's new this week, briefed by Claude
 brain search "pricing" --days 30     # only documents from the last 30 days
+brain ai set local --model llama3.1:8b # or: claude | claude_app | off   (brain ai test, brain ai models)
+brain ai connect-desktop              # let the Claude desktop app use the brain (MCP)
+brain save-reply "Ops brief" --file reply.txt   # Claude-app mode: build the file from Claude's reply
 brain enrich --limit 50               # Claude summarises, tags, extracts entities -> more connections
 brain watch                           # keep learning in the background
 ```
@@ -104,7 +108,10 @@ Add this to Claude Desktop's `claude_desktop_config.json` (or `claude mcp add` i
 ```
 
 Tools exposed: `search` (with a `days` filter), `get_document`, `related`, `ask`, `whats_new`, `remember`,
-`create_document`, `create_deck` (both accept chosen `doc_ids` and `use_ai`), `sync`, `status`. Claude can then do things like *"Check my inbox for anything from Acme, cross-reference
+`create_document`, `create_deck` (both accept chosen `doc_ids` and `use_ai`), `save_document`, `save_deck`,
+`sync`, `status`. If the brain's AI is set to *Claude app*, `ask`, `whats_new` and the create tools return the
+prepared prompt, and Claude writes the result itself and saves it with `save_document` / `save_deck`, so it
+all runs on your Claude subscription. `brain ai connect-desktop` (or the button in the app) sets this up. Claude can then do things like *"Check my inbox for anything from Acme, cross-reference
 it with what the brain knows, and draft a status deck."* That combines this server with your Gmail and
 Drive connectors. For remote clients use `brain mcp --http --port 8765`.
 
