@@ -139,12 +139,16 @@ class Store:
         ).fetchone()
         return _row_to_doc(row) if row else None
 
-    def list_documents(self, source: str | None = None, limit: int = 100, offset: int = 0) -> list[Document]:
+    def list_documents(self, source: str | None = None, limit: int = 100, offset: int = 0,
+                       kind: str | None = None) -> list[Document]:
         sql = "SELECT * FROM documents WHERE deleted = 0"
         args: list[Any] = []
         if source:
             sql += " AND source = ?"
             args.append(source)
+        if kind:
+            sql += " AND kind = ?"
+            args.append(kind)
         sql += " ORDER BY indexed_at DESC LIMIT ? OFFSET ?"
         args += [limit, offset]
         return [_row_to_doc(r) for r in self.db.execute(sql, args)]
@@ -192,6 +196,10 @@ class Store:
     def uris_for_source(self, source: str) -> dict[str, int]:
         rows = self.db.execute("SELECT uri, id FROM documents WHERE source = ? AND deleted = 0", (source,))
         return {r["uri"]: r["id"] for r in rows}
+
+    def doc_chunks(self, doc_id: int) -> list[tuple[int, str]]:
+        return [(r["ord"], r["text"]) for r in self.db.execute(
+            "SELECT ord, text FROM chunks WHERE doc_id = ? ORDER BY ord", (doc_id,))]
 
     def modified_for_source(self, source: str) -> dict[str, float | None]:
         rows = self.db.execute("SELECT uri, modified FROM documents WHERE source = ? AND deleted = 0", (source,))

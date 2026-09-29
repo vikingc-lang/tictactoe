@@ -1,7 +1,7 @@
 """HTTP server: the web app (``/``) plus a REST API for other tools (Zapier/Make/n8n, scripts, bots).
 
 Endpoints (JSON):
-  GET  /status                      GET  /documents?source=&limit=
+  GET  /status                      GET  /documents?source=&kind=&limit=&offset=
   GET  /search?q=...&limit=8        GET  /documents/{id}
   GET  /graph                       GET  /documents/{id}/related
   GET  /documents/{id}/file         GET  /outputs/{filename}      (download originals / creations)
@@ -9,8 +9,9 @@ Endpoints (JSON):
   POST /sync       {"source"?}      (runs in the background; poll /status)
   POST /enrich     {"limit"?}
   POST /sources    {"type", "name", "target"}      POST /sources/remove {"name"}
-  POST /create/document {"topic", "format"?, "instructions"?}
-  POST /create/deck     {"topic", "slides"?, "instructions"?}
+  POST /create/document {"topic", "format"?, "instructions"?, "doc_ids"?, "use_ai"?}
+  POST /create/deck     {"topic", "slides"?, "instructions"?, "doc_ids"?, "use_ai"?}
+        doc_ids pins the reference documents (else the brain picks); use_ai=false builds without Claude
   POST /settings/claude-key {"key"}   (only from this computer)
 
 Set ``BRAIN_API_TOKEN`` to require ``Authorization: Bearer <token>``. Binds to 127.0.0.1 by default.
@@ -220,7 +221,7 @@ def make_handler(service: BrainService, token: str | None):
                         return brain.graph()
                     if p == "/documents":
                         return [d.to_dict() for d in brain.store.list_documents(
-                            q.get("source"), int(q.get("limit", 100)), int(q.get("offset", 0)))]
+                            q.get("source"), int(q.get("limit", 100)), int(q.get("offset", 0)), q.get("kind"))]
                     if m := re.fullmatch(r"/documents/(\d+)", p):
                         return brain.document(int(m.group(1)))
                     if m := re.fullmatch(r"/documents/(\d+)/related", p):
@@ -254,12 +255,12 @@ def make_handler(service: BrainService, token: str | None):
                     return brain.remember(body["text"], body.get("title"), body.get("tags"))
                 if p == "/enrich":
                     return brain.enrich(int(body.get("limit", 20)))
-                if p == "/create/document":
-                    return self._with_download(brain.create_document(
-                        body["topic"], body.get("format", "md"), body.get("instructions", "")))
-                if p == "/create/deck":
-                    return self._with_download(brain.create_deck(
-                        body["topic"], int(body.get("slides", 8)), body.get("instructions", "")))
+                if p in ("/create/document", "/create/deck"):
+                    opts = {"instructions": body.get("instructions", ""), "use_ai": body.get("use_ai", True) is not False,
+                            "doc_ids": [int(i) for i in body.get("doc_ids") or []] or None}
+                    if p == "/create/deck":
+                        return self._with_download(brain.create_deck(body["topic"], int(body.get("slides", 8)), **opts))
+                    return self._with_download(brain.create_document(body["topic"], body.get("format", "md"), **opts))
             return None
 
         def _with_download(self, result: dict[str, Any]) -> dict[str, Any]:
@@ -340,8 +341,9 @@ def make_server(brain: Brain, host: str = "127.0.0.1", port: int = 8787,
     return server
 
 
-def main(host: str = "127.0.0.1", port: int = 8787, open_browser: bool = False, watch: bool = False) -> None:
-    server = make_server(Brain(), host, port, watch=watch)
+def main(host: str = "127.0.0.1", port: int = 8787, open_browser: bool = False, watch: bool = False,
+         config: str | None = None) -> None:
+    server = make_server(Brain(load_config(config)), host, port, watch=watch)
     url = f"http://{'localhost' if host in {'127.0.0.1', '0.0.0.0'} else host}:{server.server_address[1]}"
     print(f"Second Brain is running at {url}  (Ctrl+C to stop)")
     if open_browser:

@@ -128,10 +128,12 @@ def cmd_enrich(args) -> None:
 
 def cmd_create(args) -> None:
     brain = _brain(args)
+    opts = {"instructions": args.instructions or "", "use_ai": not args.no_ai,
+            "doc_ids": [int(i) for i in args.docs.split(",")] if args.docs else None}
     if args.what == "deck":
-        result = brain.create_deck(args.topic, args.slides, args.instructions or "")
+        result = brain.create_deck(args.topic, args.slides, **opts)
     else:
-        result = brain.create_document(args.topic, args.what, args.instructions or "")
+        result = brain.create_document(args.topic, args.what, **opts)
     print(f"created {result['path']}")
 
 
@@ -148,19 +150,19 @@ def cmd_graph(args) -> None:
 def cmd_api(args) -> None:
     from .api import main
 
-    main(args.host, args.port)
+    main(args.host, args.port, config=args.config)
 
 
 def cmd_ui(args) -> None:
     from .api import main
 
-    main(args.host, args.port, open_browser=not args.no_browser, watch=not args.no_watch)
+    main(args.host, args.port, open_browser=not args.no_browser, watch=not args.no_watch, config=args.config)
 
 
 def cmd_mcp(args) -> None:
     from .mcp_server import main
 
-    main(http=args.http, host=args.host, port=args.port)
+    main(http=args.http, host=args.host, port=args.port, config=args.config)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -224,6 +226,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("topic")
     c.add_argument("--slides", type=int, default=8)
     c.add_argument("--instructions")
+    c.add_argument("--docs", help="reference document ids to use, comma separated (see `brain search`)")
+    c.add_argument("--no-ai", action="store_true", help="assemble from the references without calling Claude")
     c.set_defaults(fn=cmd_create)
 
     sub.add_parser("status", help="sources and stats").set_defaults(fn=cmd_status)

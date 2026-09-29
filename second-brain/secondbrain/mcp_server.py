@@ -56,14 +56,20 @@ def build_server(brain: Brain | None = None) -> MCPServer:
         return brain.remember(text, title, tags)
 
     @mcp.tool()
-    def create_document(topic: str, format: str = "docx", instructions: str = "") -> dict[str, Any]:
-        """Write a grounded document (brief, memo, proposal, report) as .md or .docx. Returns the file path."""
-        return brain.create_document(topic, fmt=format, instructions=instructions)
+    def create_document(topic: str, format: str = "docx", instructions: str = "",
+                        doc_ids: list[int] | None = None, use_ai: bool = True) -> dict[str, Any]:
+        """Write a grounded document (brief, memo, proposal, report) as .md or .docx. Returns the file path.
+        doc_ids: reference documents to use (ids from `search`); omit to let the brain pick.
+        use_ai=false assembles a draft from the references without calling Claude."""
+        return brain.create_document(topic, fmt=format, instructions=instructions, doc_ids=doc_ids, use_ai=use_ai)
 
     @mcp.tool()
-    def create_deck(topic: str, slides: int = 8, instructions: str = "") -> dict[str, Any]:
-        """Build a PowerPoint deck grounded in the knowledge base. Returns the .pptx path."""
-        return brain.create_deck(topic, slides=slides, instructions=instructions)
+    def create_deck(topic: str, slides: int = 8, instructions: str = "",
+                    doc_ids: list[int] | None = None, use_ai: bool = True) -> dict[str, Any]:
+        """Build a PowerPoint deck grounded in the knowledge base. Returns the .pptx path.
+        doc_ids: reference documents to use (ids from `search`); omit to let the brain pick.
+        use_ai=false builds the deck from the references without calling Claude."""
+        return brain.create_deck(topic, slides=slides, instructions=instructions, doc_ids=doc_ids, use_ai=use_ai)
 
     @mcp.tool()
     def sync(source: str | None = None) -> list[dict[str, Any]]:
@@ -78,8 +84,10 @@ def build_server(brain: Brain | None = None) -> MCPServer:
     return mcp
 
 
-def main(http: bool = False, host: str = "127.0.0.1", port: int = 8765) -> None:
-    server = build_server()
+def main(http: bool = False, host: str = "127.0.0.1", port: int = 8765, config: str | None = None) -> None:
+    from .config import load_config
+
+    server = build_server(Brain(load_config(config)))
     if http:
         server.run("streamable-http", host=host, port=port)
     else:

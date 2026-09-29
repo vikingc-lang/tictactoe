@@ -19,6 +19,7 @@ from .llm import LLM, LLMUnavailable
 from .render import Deck, Slide, deck_to_pptx, markdown_to_docx
 from .search import Hit, search
 from .store import Store
+from .text import tokenize
 
 ANSWER_SYSTEM = """You are the user's second brain: a research partner that answers from their own knowledge base.
 Ground every claim in the numbered sources provided and cite them inline like [1] or [2][4].
@@ -161,42 +162,77 @@ class Brain:
     def _output_path(self, topic: str, ext: str) -> Path:
         return self.config.output_dir / f"{datetime.now():%Y-%m-%d}-{_slug(topic)}{ext}"
 
-    def create_document(self, topic: str, fmt: str = "md", instructions: str = "", k: int = 12) -> dict[str, Any]:
-        hits = self._context_hits(topic, k)
+    def reference_hits(self, doc_ids: list[int], topic: str, per_doc: int = 8) -> list[Hit]:
+        """Passages from documents the user picked, most relevant to the topic first, kept in reading order."""
+        terms = set(tokenize(topic))
+        hits: list[Hit] = []
+        for doc_id in dict.fromkeys(doc_ids):  # de-duplicate, keep the user's order
+            doc = self.store.get(int(doc_id))
+            if not doc:
+                continue
+            chunks = self.store.doc_chunks(doc.id)
+            ranked = sorted(chunks, key=lambda c: (-len(terms & set(tokenize(c[1]))), c[0]))[:per_doc]
+            for ord_, text in sorted(ranked):
+                hits.append(Hit(doc.id, ord_, doc.title, doc.uri, doc.source, text, 0.0))
+        return hits
+
+    def _creation_context(self, topic: str, k: int, doc_ids: list[int] | None) -> tuple[list[Hit], str, list[dict]]:
+        hits = self.reference_hits(doc_ids, topic) if doc_ids else self._context_hits(topic, k)
+        if not hits:
+            raise ValueError("no reference material: pick documents, or add sources to the brain first")
         context, sources = format_context(hits)
-        prompt = (f"<sources>\n{context}\n</sources>\n\nWrite a document about: {topic}\n"
-                  f"{'Additional instructions: ' + instructions if instructions else ''}")
-        try:
-            markdown = self.llm.text(DOC_SYSTEM, prompt)
-        except LLMUnavailable as exc:
-            markdown = f"# {topic}\n\n> Draft outline — Claude unavailable ({exc}).\n\n" + "\n\n".join(
-                f"## {s['title']}\n\n" + next(h.text[:800] for h in hits if h.doc_id == s["doc_id"]) + f" [{s['n']}]"
+        return hits, context, sources
+
+    @staticmethod
+    def _passages(hits: list[Hit], source: dict[str, Any], limit: int = 3) -> list[str]:
+        return [h.text for h in hits if h.doc_id == source["doc_id"]][:limit]
+
+    def create_document(self, topic: str, fmt: str = "md", instructions: str = "", k: int = 12,
+                        doc_ids: list[int] | None = None, use_ai: bool = True) -> dict[str, Any]:
+        """Write a document. ``doc_ids`` pins the references; ``use_ai=False`` builds a draft without Claude."""
+        hits, context, sources = self._creation_context(topic, k, doc_ids)
+        markdown, mode = None, "no_ai"
+        if use_ai:
+            prompt = (f"<sources>\n{context}\n</sources>\n\nWrite a document about: {topic}\n"
+                      f"{'Additional instructions: ' + instructions if instructions else ''}")
+            try:
+                markdown, mode = self.llm.text(DOC_SYSTEM, prompt), "claude"
+            except LLMUnavailable as exc:
+                mode, note = "extractive", f"Claude unavailable ({exc})"
+        if markdown is None:
+            note = "Draft assembled from your reference documents (no AI)" if mode == "no_ai" else note
+            markdown = f"# {topic}\n\n> {note}.\n\n" + "\n\n".join(
+                f"## {s['title']}\n\n" + "\n\n".join(p.strip()[:1200] for p in self._passages(hits, s)) + f" [{s['n']}]"
                 for s in sources)
             markdown += "\n\n## Sources\n\n" + "\n".join(f"- [{s['n']}] {s['title']}" for s in sources)
         md_path = self._output_path(topic, ".md")
         md_path.write_text(markdown, encoding="utf-8")
-        out = {"path": str(md_path), "format": "md", "sources": sources}
+        out = {"path": str(md_path), "format": "md", "sources": sources, "mode": mode}
         if fmt == "docx":
             docx_path = markdown_to_docx(markdown, self._output_path(topic, ".docx"), self.config.doc_template)
             out.update(path=str(docx_path), format="docx", markdown_path=str(md_path))
         return out
 
-    def create_deck(self, topic: str, slides: int = 8, instructions: str = "", k: int = 12) -> dict[str, Any]:
-        hits = self._context_hits(topic, k)
-        context, sources = format_context(hits)
-        prompt = (f"<sources>\n{context}\n</sources>\n\nCreate a {slides}-slide deck (excluding the title slide) "
-                  f"about: {topic}\n{'Additional instructions: ' + instructions if instructions else ''}")
-        try:
-            deck = self.llm.structured(DECK_SYSTEM, prompt, Deck)
-            mode = "claude"
-        except LLMUnavailable:
-            deck = Deck(title=topic, subtitle="Draft built from your knowledge base", slides=[
-                Slide(title=s["title"],
-                      bullets=[ln.strip()[:160] for ln in next(h.text for h in hits if h.doc_id == s["doc_id"]).splitlines()
-                               if ln.strip()][:5],
-                      speaker_notes=f"Source [{s['n']}] {s['uri']}")
-                for s in sources[:slides]])
-            mode = "extractive"
+    def create_deck(self, topic: str, slides: int = 8, instructions: str = "", k: int = 12,
+                    doc_ids: list[int] | None = None, use_ai: bool = True) -> dict[str, Any]:
+        """Build a deck. ``doc_ids`` pins the references; ``use_ai=False`` builds it without Claude."""
+        hits, context, sources = self._creation_context(topic, k, doc_ids)
+        deck, mode = None, "no_ai"
+        if use_ai:
+            prompt = (f"<sources>\n{context}\n</sources>\n\nCreate a {slides}-slide deck (excluding the title slide) "
+                      f"about: {topic}\n{'Additional instructions: ' + instructions if instructions else ''}")
+            try:
+                deck, mode = self.llm.structured(DECK_SYSTEM, prompt, Deck), "claude"
+            except LLMUnavailable:
+                mode = "extractive"
+        if deck is None:
+            def bullets(source: dict[str, Any]) -> list[str]:
+                lines = [ln.strip().lstrip("#-•* ").strip() for p in self._passages(hits, source) for ln in p.splitlines()]
+                return [ln[:160] for ln in lines if len(ln) > 3 and ln != source["title"]][:5]
+
+            deck = Deck(title=topic, subtitle="Draft built from your reference documents",
+                        slides=[Slide(title=s["title"], bullets=bullets(s), speaker_notes=f"Source [{s['n']}] {s['uri']}")
+                                for s in sources[:slides]])
         path = deck_to_pptx(deck, self._output_path(topic, ".pptx"),
                             [f"[{s['n']}] {s['title']}" for s in sources], self.config.deck_template)
         return {"path": str(path), "format": "pptx", "slides": len(deck.slides), "sources": sources, "mode": mode}

@@ -508,3 +508,61 @@ def test_add_mailbox_via_api_keeps_password_secret(tmp_path, monkeypatch):
         server.shutdown()
         import os
         os.environ.pop("MAIL_PASSWORD_PERSONAL_MAIL", None)
+
+
+# ---------------------------------------------------------------- create from chosen references
+class ExplodingLLM:
+    def text(self, *a, **k):
+        raise AssertionError("Claude must not be called")
+
+    structured = text
+
+
+def test_create_with_chosen_references_uses_only_those(workspace):
+    cfg, _ = workspace
+    llm = FakeLLM()
+    brain = Brain(cfg, llm=llm)
+    brain.sync()
+    supply = brain.store.find_by_title("Supply Chain Assessment")
+    market = brain.store.find_by_title("Market Entry")
+    result = brain.create_document("Operations brief", fmt="docx", doc_ids=[supply.id, market.id, supply.id])
+    assert result["mode"] == "claude"
+    assert [s["title"] for s in result["sources"]] == ["Supply Chain Assessment", "Market Entry"]
+    prompt = llm.prompts[-1]
+    assert "Warehouse automation" in prompt and "Brazilian" in prompt
+    assert "Pricing Playbook" not in prompt and "Acme Corp" not in prompt   # nothing else sneaks in
+
+    deck = brain.create_deck("Operations", slides=2, doc_ids=[market.id])
+    assert [s["title"] for s in deck["sources"]] == ["Market Entry"]
+
+
+def test_create_without_ai_never_calls_claude(workspace):
+    cfg, _ = workspace
+    brain = Brain(cfg, llm=ExplodingLLM())
+    brain.sync()
+    playbook = brain.store.find_by_title("Pricing Playbook")
+    doc = brain.create_document("Pricing note", fmt="docx", doc_ids=[playbook.id], use_ai=False)
+    assert doc["mode"] == "no_ai"
+    texts = "\n".join(p.text for p in docx.Document(doc["path"]).paragraphs)
+    assert "Value-based pricing beats cost-plus" in texts and "no AI" in texts
+    deck = brain.create_deck("Pricing", slides=3, use_ai=False)          # no picks: brain chooses sources
+    assert deck["mode"] == "no_ai" and deck["sources"]
+    slides = Presentation(deck["path"]).slides
+    assert any("Value-based pricing" in sh.text_frame.text for s in slides for sh in s.shapes if sh.has_text_frame)
+
+
+def test_create_api_accepts_references_and_no_ai(workspace, monkeypatch):
+    cfg, _ = workspace
+    monkeypatch.delenv("BRAIN_API_TOKEN", raising=False)
+    brain = Brain(cfg, llm=ExplodingLLM())
+    brain.sync()
+    market = brain.store.find_by_title("Market Entry")
+    server, base = _serve(brain)
+    try:
+        r = _call(base, "/create/deck", {"topic": "Brazil", "slides": 2, "doc_ids": [market.id], "use_ai": False})
+        assert r["mode"] == "no_ai" and [s["title"] for s in r["sources"]] == ["Market Entry"]
+        assert _call(base, r["download"] + "?download=1", raw=True)[:2] == b"PK"
+        with pytest.raises(urllib.error.HTTPError):                       # unknown ids -> clear error
+            _call(base, "/create/document", {"topic": "x", "doc_ids": [99999], "use_ai": False})
+    finally:
+        server.shutdown()

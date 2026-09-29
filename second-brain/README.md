@@ -24,7 +24,8 @@ and slide decks from what you know, using Claude.
 | **Connects online + offline places** | Local and external drives; any cloud with a desktop sync client (OneDrive, SharePoint, Dropbox, Google Drive, iCloud, Box); Google Drive via API; web pages and online PDFs; **any JSON REST API** set up in config, no code needed. |
 | **Connects the knowledge** | Three edge types: **explicit** (`[[wikilinks]]`, markdown links), **related** (TF-IDF topic similarity), **entity** (the same people, companies or projects, found by Claude). |
 | **Keeps learning** | `brain watch` syncs continuously. Changed files are re-indexed and the old version is kept as a revision. Deleted files are forgotten. An unplugged drive never wipes knowledge. `remember` captures facts from chat. Generated artifacts are indexed too, so the brain builds on its own work. |
-| **Creates** | Cited answers, Markdown/Word documents, and PowerPoint decks (optionally on your branded template). Decks use action titles and speaker notes with citations. |
+| **Creates** | Cited answers, Markdown/Word documents, and PowerPoint decks (optionally on your branded template). Decks use action titles and speaker notes with citations. **You choose the reference documents** (from search, any open document, or an answer), start from templates (executive brief, proposal, meeting summary, status update, client or board deck), and pick **✨ Generate with AI** or **📄 Build without AI** (a free draft assembled from your references). |
+| **Easy to use** | A Home dashboard, Ctrl/⌘+K quick find from anywhere, actions on every answer (create from its sources, save to the brain, copy), Library filters by type, and a light/dark theme. |
 | **Plugs into other tools** | **MCP server**: Claude can use the brain alongside Gmail, Calendar, Slack and other MCP servers. **REST API** with bearer-token auth for everything else. |
 | **Degrades gracefully** | Without Claude credentials, search, linking and sync still work. `ask` returns cited passages, and `create deck` builds an extractive draft. |
 
@@ -55,9 +56,9 @@ installs everything, then opens the app at <http://localhost:8787>. From there y
 paste your Claude key, and Ask / Search / browse Connections / Create documents and decks. While the app
 is open it keeps syncing in the background.
 
-| Ask with citations | Map of connections | Create decks & docs |
+| Home | Ask with citations | Create from chosen references |
 |---|---|---|
-| ![Ask](docs/screenshots/ask.png) | ![Connections](docs/screenshots/graph.png) | ![Create](docs/screenshots/create.png) |
+| ![Home](docs/screenshots/home.png) | ![Ask](docs/screenshots/ask.png) | ![Create](docs/screenshots/create.png) |
 
 ## Quick start: command line
 
@@ -74,6 +75,7 @@ export ANTHROPIC_API_KEY=sk-ant-...   # or: ant auth login
 brain ask "What did we recommend to Acme on pricing, and why?"
 brain create docx "Acme pricing strategy – executive brief"
 brain create deck "Acme pricing strategy" --slides 8 --instructions "board audience"
+brain create docx "Ops brief" --docs 12,31,40 --no-ai   # from chosen references, without AI
 brain enrich --limit 50               # Claude summarises, tags, extracts entities -> more connections
 brain watch                           # keep learning in the background
 ```

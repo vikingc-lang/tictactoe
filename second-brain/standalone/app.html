@@ -124,20 +124,61 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
   .brand, .nav .spacer, .nav .meta { display: none; }
   .nav button { padding: 8px 10px; white-space: nowrap; }
 }
+
+/* ---- UI extensions ---- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); cursor: pointer; transition: border-color .15s; }
+.tile:hover { border-color: var(--accent); }
+.tile .n { font-size: 26px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.tile .l { color: var(--muted); font-size: 13px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid2 > .card { margin-bottom: 0; }
+[hidden] { display: none !important; }
+.grid2 > *, .qa > * { min-width: 0; }
+.qa .btn { white-space: normal; }
+.qa { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.qa .btn { text-align: left; }
+.list-item { display: flex; gap: 10px; align-items: baseline; padding: 8px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.list-item:last-child { border-bottom: none; }
+.list-item:hover .t { color: var(--accent); }
+.list-item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; padding: 4px 11px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--border); cursor: pointer; color: var(--text); }
+.chip:hover { border-color: var(--accent); }
+.chip.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+.chip .x { border: none; background: none; cursor: pointer; color: inherit; opacity: .7; padding: 0 0 0 2px; font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.ref-add { margin-left: auto; flex: none; }
+.createbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.palette { align-items: flex-start; padding-top: 12vh; }
+.palette .card { width: min(640px, 100%); padding: 0; overflow: hidden; }
+.palette input[type=text] { border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 16px 18px; font-size: 17px; box-shadow: none; }
+.pal-item { padding: 10px 18px; display: flex; gap: 10px; cursor: pointer; align-items: baseline; }
+.pal-item.sel, .pal-item:hover { background: var(--accent-soft); }
+.pal-foot { padding: 8px 18px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); }
+kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--panel-2); color: var(--muted); }
+.navtools { display: flex; gap: 6px; padding: 0 12px 6px; }
+.nav .navtools .btn { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 5px 10px; font-size: 13px; color: var(--text); display: inline-flex; gap: 6px; align-items: center; }
+.nav .navtools .btn:hover { background: var(--panel-2); }
+.nav button .pill { margin-left: auto; }
+.btn:focus-visible, .chip:focus-visible, .nav button:focus-visible, .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 760px) { .grid2, .qa { grid-template-columns: 1fr; } .navtools { padding: 0; } .navtools #findBtn kbd { display: none; } }
 </style>
 </head>
 <body>
 <div class="app">
   <aside class="nav" id="nav">
     <div class="brand">🧠 Second Brain</div>
-    <button data-view="ask" class="active">💬 Ask</button>
+    <button data-view="home" class="active">🏠 Home</button>
+    <button data-view="ask">💬 Ask</button>
     <button data-view="search">🔎 Search</button>
     <button data-view="library">📚 Library</button>
     <button data-view="graph">🕸️ Connections</button>
-    <button data-view="create">✨ Create</button>
+    <button data-view="create">✨ Create <span class="pill accent" id="navRefCount" hidden></span></button>
     <button data-view="sources">🔌 Sources &amp; settings</button>
     <button id="rememberBtn">📝 Remember…</button>
     <div class="spacer"></div>
+    <div class="navtools"><button class="btn grow" id="findBtn" title="Quick find (Ctrl/⌘+K)">🔍 Find <kbd>⌘K</kbd></button><button class="btn" id="themeBtn" aria-label="Switch theme">🌓</button></div>
     <div class="meta" id="meta">Loading…</div>
   </aside>
 
@@ -148,8 +189,32 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
       <button class="btn small primary" id="reconnectBtn">Reconnect folders</button></div></div>
     <div class="banner warn" id="storageBanner">⚠️ This browser isn't letting the page save data (private window or blocked storage). Everything works, but use <b>Export backup</b> under Sources &amp; settings before closing.</div>
 
+    <!-- HOME -->
+    <section class="view active" id="view-home">
+      <h1 id="greet">Welcome back</h1>
+      <p class="sub">Your second brain at a glance.</p>
+      <div class="card row" style="padding:10px">
+        <input type="text" id="homeAsk" class="grow" placeholder="Ask anything about your work… e.g. What did we agree with Acme on pricing?" aria-label="Ask a question">
+        <button class="btn primary" id="homeAskBtn">Ask</button>
+      </div>
+      <div class="tiles" id="tiles"></div>
+      <div class="grid2">
+        <div class="card"><h3 style="margin-top:0">Quick actions</h3>
+          <div class="qa">
+            <button class="btn" data-create="docx">📄 Write a document</button>
+            <button class="btn" data-create="deck">📊 Build a deck</button>
+            <button class="btn" data-remember>📝 Remember something</button>
+            <button class="btn" data-goto="sources">➕ Add a source</button>
+            <button class="btn" data-goto="graph">🕸️ Explore connections</button>
+            <button class="btn" data-goto="search">🔎 Search everything</button>
+          </div></div>
+        <div class="card"><h3 style="margin-top:0">Recently added</h3><div id="homeRecent"></div></div>
+      </div>
+      <div class="card" style="margin-top:16px"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Sources</h3><a href="#" data-goto="sources" class="small">Manage →</a></div><div id="homeSources" style="margin-top:6px"></div></div>
+    </section>
+
     <!-- ASK -->
-    <section class="view active" id="view-ask">
+    <section class="view" id="view-ask">
       <h1>Ask your brain</h1>
       <p class="sub">Answers come from your own documents, with numbered citations you can open.</p>
       <div id="welcome" class="card" style="display:none">
@@ -214,15 +279,35 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
     <!-- CREATE -->
     <section class="view" id="view-create">
       <h1>Create</h1>
-      <p class="sub">Generate a document or a deck grounded in your knowledge. Created files are kept in the Library and learned by the brain.</p>
+      <p class="sub">Turn your knowledge into a document or a deck. Pick the reference documents to build from, then generate with AI or assemble a draft without it.</p>
       <div class="card">
         <div class="seg" id="createType"><button data-t="docx" class="on">📄 Word document</button><button data-t="deck">📊 PowerPoint deck</button><button data-t="md">📝 Markdown</button></div>
+        <label>Start from a template (optional)</label>
+        <div class="chips" id="presets"></div>
         <label for="cTopic">Topic</label>
         <input type="text" id="cTopic" placeholder="e.g. Acme pricing strategy – executive brief">
         <label for="cInstr">Instructions (optional)</label>
         <textarea id="cInstr" placeholder="Audience, tone, structure, length… e.g. 'Board audience, 2 pages, end with 3 recommendations'"></textarea>
         <div id="slidesRow" style="display:none"><label for="cSlides">Number of slides</label><input type="number" id="cSlides" value="8" min="2" max="30" style="width:120px"></div>
-        <div class="row" style="margin-top:14px"><button class="btn primary" id="createBtn">Create</button><span class="muted small" id="createNote"></span></div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3 style="margin:0">Reference documents <span class="pill accent" id="refCount">0</span></h3><button class="btn small" id="refClear">Clear all</button></div>
+        <div class="chips" id="refChips" style="margin:10px 0"></div>
+        <div class="row">
+          <input type="text" id="refSearch" class="grow" placeholder="Search your brain for reference documents…" aria-label="Search for reference documents">
+          <button class="btn" id="refFind">Find</button>
+          <button class="btn" id="refSuggest" title="Search using the topic above">Suggest from topic</button>
+        </div>
+        <div id="refResults" style="margin-top:6px"></div>
+        <div class="hint">Tip: you can also add documents with <b>+ Use in Create</b> from Search results, from any open document, or from an answer on the Ask page.</div>
+      </div>
+      <div class="card">
+        <div class="createbar">
+          <button class="btn primary" id="createAI">✨ Generate with AI</button>
+          <button class="btn" id="createNoAI">📄 Build without AI</button>
+          <span class="small muted" id="createNote"></span>
+        </div>
+        <div class="hint" id="aiHint">With AI, Claude writes from your references and cites them. Without AI, a draft is assembled from the most relevant passages. No API call, no cost.</div>
       </div>
       <div id="createResults"></div>
     </section>
@@ -289,6 +374,13 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
     <label>Note</label><textarea id="remText" rows="6"></textarea>
     <label>Tags (comma separated, optional)</label><input type="text" id="remTags">
     <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="remCancel">Cancel</button><button class="btn primary" id="remSave">Save to brain</button></div>
+  </div>
+</div>
+<div class="modal palette" id="palette" role="dialog" aria-modal="true" aria-label="Quick find">
+  <div class="card">
+    <input type="text" id="palInput" placeholder="Search documents or go to a page… type a question to ask it" autocomplete="off" aria-label="Quick find">
+    <div id="palList" role="listbox"></div>
+    <div class="pal-foot"><kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>Enter</kbd> open · <kbd>Esc</kbd> close</div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -1104,13 +1196,33 @@ const Brain = {
       return { answer: passages, sources, mode: "extractive", reason: e.message };
     }
   },
-  async createDocument(topic, format, instructions) {
-    const hits = this.contextHits(topic, 12), { context, sources } = this.formatContext(hits);
-    let markdown, mode = "claude";
-    try { markdown = await llmText(DOC_SYSTEM, `<sources>\n${context}\n</sources>\n\nWrite a document about: ${topic}\n${instructions ? "Additional instructions: " + instructions : ""}`, 32000); }
-    catch (e) {
-      if (!(e instanceof LLMUnavailable)) throw e; mode = "extractive";
-      markdown = `# ${topic}\n\n> Draft outline — ${e.message}.\n\n` + sources.map(s => `## ${s.title}\n\n${hits.find(h => h.doc_id === s.doc_id).text.slice(0, 800)} [${s.n}]`).join("\n\n")
+  // Passages from documents the user picked, most relevant to the topic first, kept in reading order.
+  referenceHits(docIds, topic, perDoc = 8) {
+    const terms = new Set(tokenize(topic).map(stem)), hits = [];
+    for (const id of [...new Set(docIds.map(Number))]) {
+      const d = this.docs.get(id); if (!d) continue;
+      const chunks = chunkText(d.text).map((text, ord) => ({ ord, text, score: new Set(tokenize(text).map(stem).filter(t => terms.has(t))).size }));
+      const picked = [...chunks].sort((a, b) => b.score - a.score || a.ord - b.ord).slice(0, perDoc).sort((a, b) => a.ord - b.ord);
+      for (const c of picked) hits.push({ doc_id: d.id, title: d.title, uri: d.uri, source: d.source, text: c.text, score: 0 });
+    }
+    return hits;
+  },
+  creationContext(topic, docIds) {
+    const hits = docIds?.length ? this.referenceHits(docIds, topic) : this.contextHits(topic, 12);
+    if (!hits.length) throw new Error("No reference material: pick documents, or add sources first");
+    return { hits, ...this.formatContext(hits) };
+  },
+  passages: (hits, s, limit = 3) => hits.filter(h => h.doc_id === s.doc_id).slice(0, limit).map(h => h.text),
+  // docIds pins the references (else the brain picks); useAi=false assembles without calling Claude.
+  async createDocument(topic, format, instructions, { docIds = null, useAi = true } = {}) {
+    const { hits, context, sources } = this.creationContext(topic, docIds);
+    let markdown = null, mode = "no_ai", note = "Draft assembled from your reference documents (no AI)";
+    if (useAi) {
+      try { markdown = await llmText(DOC_SYSTEM, `<sources>\n${context}\n</sources>\n\nWrite a document about: ${topic}\n${instructions ? "Additional instructions: " + instructions : ""}`, 32000); mode = "claude"; }
+      catch (e) { if (!(e instanceof LLMUnavailable)) throw e; mode = "extractive"; note = e.message; }
+    }
+    if (markdown === null) {
+      markdown = `# ${topic}\n\n> ${note}.\n\n` + sources.map(s => `## ${s.title}\n\n${this.passages(hits, s).map(p => p.trim().slice(0, 1200)).join("\n\n")} [${s.n}]`).join("\n\n")
         + "\n\n## Sources\n\n" + sources.map(s => `- [${s.n}] ${s.title}`).join("\n");
     }
     const name = `${today()}-${slug(topic)}${format === "docx" ? ".docx" : ".md"}`;
@@ -1118,14 +1230,17 @@ const Brain = {
     const docId = await this.saveOutput(name, blob, markdown, topic, format === "docx" ? "document" : "note");
     return { path: name, name, download: URL.createObjectURL(blob), sources, mode, doc_id: docId };
   },
-  async createDeck(topic, slides, instructions) {
-    const hits = this.contextHits(topic, 12), { context, sources } = this.formatContext(hits);
-    let deck, mode = "claude";
-    try { deck = await llmJSON(DECK_SYSTEM, `<sources>\n${context}\n</sources>\n\nCreate a ${slides}-slide deck (excluding the title slide) about: ${topic}\n${instructions ? "Additional instructions: " + instructions : ""}`, DECK_SCHEMA); }
-    catch (e) {
-      if (!(e instanceof LLMUnavailable)) throw e; mode = "extractive";
-      deck = { title: topic, subtitle: "Draft built from your knowledge base", slides: sources.slice(0, slides).map(s => ({ title: s.title,
-        bullets: hits.find(h => h.doc_id === s.doc_id).text.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 5).map(l => l.slice(0, 160)), speaker_notes: `Source [${s.n}] ${s.uri}` })) };
+  async createDeck(topic, slides, instructions, { docIds = null, useAi = true } = {}) {
+    const { hits, context, sources } = this.creationContext(topic, docIds);
+    let deck = null, mode = "no_ai";
+    if (useAi) {
+      try { deck = await llmJSON(DECK_SYSTEM, `<sources>\n${context}\n</sources>\n\nCreate a ${slides}-slide deck (excluding the title slide) about: ${topic}\n${instructions ? "Additional instructions: " + instructions : ""}`, DECK_SCHEMA); mode = "claude"; }
+      catch (e) { if (!(e instanceof LLMUnavailable)) throw e; mode = "extractive"; }
+    }
+    if (deck === null) {
+      const bullets = s => this.passages(hits, s).flatMap(p => p.split("\n")).map(l => l.trim().replace(/^[#\-•*\s]+/, "").trim())
+        .filter(l => l.length > 3 && l !== s.title).slice(0, 5).map(l => l.slice(0, 160));
+      deck = { title: topic, subtitle: "Draft built from your reference documents", slides: sources.slice(0, slides).map(s => ({ title: s.title, bullets: bullets(s), speaker_notes: `Source [${s.n}] ${s.uri}` })) };
     }
     const blob = await deckToPptx(deck, sources.map(s => `[${s.n}] ${s.title}`));
     const name = `${today()}-${slug(topic)}.pptx`;
@@ -1264,7 +1379,7 @@ async function openDoc(id) {
   const rel = related.length ? related.map(r => `<div class="rel" data-doc="${r.doc_id}"><span class="pill ${r.kind === "explicit" || r.kind === "attachment" ? "accent" : ""}">${r.kind === "explicit" ? "link" : r.kind === "attachment" ? "attachment" : r.kind === "related" ? "similar" : "shared"}</span><span class="t">${esc(r.title)}</span><span class="muted small">${esc(r.label || "")}</span></div>`).join("") : '<p class="muted small">No connections yet.</p>';
   $("#dBody").innerHTML = `
     <div class="row small muted" style="margin-bottom:10px"><span class="pill">${esc(d.kind)}</span><span class="pill">${esc(d.source)}</span><span>indexed ${ago(d.indexedAt)}</span>${d.revisions?.length ? `<span>· ${d.revisions.length} earlier version(s)</span>` : ""}</div>
-    <div class="row" style="margin-bottom:14px"><button class="btn small" id="dOpen">Open original</button><button class="btn small" id="dAsk">Ask about this</button></div>
+    <div class="row" style="margin-bottom:14px"><button class="btn small" id="dOpen">Open original</button><button class="btn small" id="dAsk">Ask about this</button><button class="btn small" data-ref="${d.id}" data-ref-title="${esc(d.title)}">+ Use in Create</button></div>
     ${d.summary ? `<h4 style="margin:6px 0">Summary</h4><p>${esc(d.summary)}</p>` : ""}
     ${d.tags?.length ? `<div class="row" style="margin-bottom:10px">${d.tags.map(t => `<span class="pill accent">${esc(t)}</span>`).join("")}</div>` : ""}
     <h4 style="margin:14px 0 4px">Connected documents</h4>${rel}
@@ -1300,6 +1415,7 @@ async function ask() {
       + `<div class="md">${md(r.answer)}</div>`
       + (r.sources.length ? `<div class="sources">${r.sources.map(s => `<span class="srcchip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div>` : "");
     $$(".cite", bot).forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } });
+    if (r.mode !== "empty") bot.insertAdjacentHTML("beforeend", answerActions(q, r));
   } catch (e) { bot.innerHTML = `<span style="color:var(--bad)">Something went wrong: ${esc(e.message)}</span>`; }
   $("#askBtn").disabled = false;
 }
@@ -1317,7 +1433,7 @@ function doSearch() {
   const hl = s => { let h = esc(s); for (const w of words) h = h.replace(new RegExp(`\\b(${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\w*)`, "gi"), "<mark>$1</mark>"); return h; };
   box.innerHTML = hits.length ? hits.map(h => {
     const t = h.text.replace(/\s+/g, " "); const i = Math.max(0, t.toLowerCase().indexOf(words[0] || "") - 80);
-    return `<div class="result" data-doc="${h.doc_id}"><div class="rtitle">${esc(h.title)}</div><div class="snippet">${i ? "…" : ""}${hl(t.slice(i, i + 260))}…</div><div class="small muted">${esc(h.source)}</div></div>`;
+    return `<div class="result" data-doc="${h.doc_id}"><div class="rtitle">${esc(h.title)}</div><div class="snippet">${i ? "…" : ""}${hl(t.slice(i, i + 260))}…</div><div class="row small muted"><span>${esc(h.source)}</span><button class="btn small ref-add" data-ref="${h.doc_id}" data-ref-title="${esc(h.title)}">+ Use in Create</button></div></div>`;
   }).join("") : '<div class="empty">No matches. Try different words, or check the source is synced.</div>';
 }
 $("#searchBtn").onclick = doSearch;
@@ -1328,7 +1444,7 @@ let libShown = 200;
 function loadLibrary(reset) { if (reset) libShown = 200; renderLibrary(); }
 function renderLibrary() {
   const f = $("#libFilter").value.toLowerCase(), src = $("#libSource").value;
-  const all = [...Brain.docs.values()].filter(d => (!src || d.source === src) && (!f || d.title.toLowerCase().includes(f))).sort((a, b) => b.indexedAt - a.indexedAt);
+  const all = [...Brain.docs.values()].filter(d => (!src || d.source === src) && (!f || d.title.toLowerCase().includes(f)) && (!LIB_KIND || d.kind === LIB_KIND)).sort((a, b) => b.indexedAt - a.indexedAt);
   const rows = all.slice(0, libShown);
   $("#libMore").style.display = all.length > libShown ? "" : "none";
   $("#libBody").innerHTML = rows.length ? rows.map(d => `<tr class="click" data-doc="${d.id}"><td>${kindIcon(d.kind)} ${esc(d.title)}${d.summary ? `<div class="small muted">${esc(d.summary.slice(0, 140))}</div>` : ""}</td><td class="small">${esc(d.kind)}</td><td class="small">${esc(d.source)}</td><td class="small muted">${ago(d.indexedAt)}</td></tr>`).join("")
@@ -1338,24 +1454,7 @@ $("#libFilter").addEventListener("input", renderLibrary);
 $("#libSource").addEventListener("change", () => loadLibrary(true));
 $("#libMore").onclick = () => { libShown += 200; renderLibrary(); };
 
-// ---------- create ----------
-let createType = "docx";
-$$("#createType button").forEach(b => b.onclick = () => { createType = b.dataset.t; $$("#createType button").forEach(x => x.classList.toggle("on", x === b)); $("#slidesRow").style.display = createType === "deck" ? "" : "none"; });
-$("#createBtn").onclick = async () => {
-  const topic = $("#cTopic").value.trim(); if (!topic) { toast("Add a topic first"); return; }
-  if (!Brain.docs.size) { toast("Add some knowledge first (Sources & settings)"); return; }
-  const btn = $("#createBtn"); btn.disabled = true; $("#createNote").innerHTML = '<span class="spinner"></span> Researching your knowledge and writing… (can take a minute or two)';
-  try {
-    const instructions = $("#cInstr").value.trim();
-    const r = createType === "deck" ? await Brain.createDeck(topic, +$("#cSlides").value || 8, instructions) : await Brain.createDocument(topic, createType, instructions);
-    $("#createResults").insertAdjacentHTML("afterbegin", `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${createType === "deck" ? "📊" : "📄"} ${esc(r.name)}</b>
-      <div class="small muted">${r.mode === "extractive" ? "Draft built without Claude (connect Claude for a written version) · " : ""}${r.sources.length} sources · kept in your Library under “Created by the brain”</div></div>
-      <a class="btn primary" href="${r.download}" download="${esc(r.name)}">Download</a></div>
-      <div class="row" style="margin-top:10px">${r.sources.map(s => `<span class="srcchip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div></div>`);
-    $("#createNote").textContent = "";
-  } catch (e) { $("#createNote").textContent = "Failed: " + e.message; }
-  btn.disabled = false; refreshStatus();
-};
+// ---------- create: see UI extensions below ----------
 
 // ---------- sources & settings ----------
 const MODE_LABEL = { handle: "Folder: updates automatically while this page is open", upload: "Imported folder: click Update to re-scan",
@@ -1509,12 +1608,233 @@ function tick() {
     const k = Math.exp(-e.deltaY * 0.0015), s = Math.min(4, Math.max(0.2, G.scale * k)); G.ox = mx - (mx - G.ox) * s / G.scale; G.oy = my - (my - G.oy) * s / G.scale; G.scale = s; }, { passive: false });
 })();
 
+
+// Data adapter: the single-file app talks to the in-browser engine.
+const PREF = settings;
+const DATA = {
+  search: async (q, limit = 8) => Brain.search(q, { limit }),
+  recent: async n => [...Brain.docs.values()].sort((a, b) => b.indexedAt - a.indexedAt).slice(0, n).map(d => ({ id: d.id, title: d.title, kind: d.kind, at: d.indexedAt })),
+  overview: async () => {
+    const s = Brain.status(), byKind = {};
+    for (const d of Brain.docs.values()) byKind[d.kind] = (byKind[d.kind] || 0) + 1;
+    return { documents: s.stats.documents, links: s.stats.links, byKind, claude: s.claude_configured,
+      sources: s.sources.map(x => ({ name: x.name, documents: x.documents, at: x.lastSync, errors: (x.lastStats?.errors || []).length })) };
+  },
+  create: (type, b) => type === "deck" ? Brain.createDeck(b.topic, b.slides, b.instructions, { docIds: b.doc_ids, useAi: b.use_ai })
+                                       : Brain.createDocument(b.topic, b.format, b.instructions, { docIds: b.doc_ids, useAi: b.use_ai }),
+  remember: (text, title, tags) => Brain.remember(text, title, tags),
+  fileName: r => r.name,
+  downloadUrl: r => r.download,
+};
+
+// ===================== UI extensions: home, quick find, create with references, answer actions =====================
+const KIND_LABEL = { email: "Emails", pdf: "PDFs", document: "Word docs", presentation: "Decks", spreadsheet: "Spreadsheets",
+  note: "Notes", data: "Data", web: "Web pages", code: "Code", file: "Files" };
+let LIB_KIND = "";
+
+// ---- theme toggle (auto → light → dark)
+function applyTheme(t) {
+  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  $("#themeBtn").textContent = t === "dark" ? "🌙" : t === "light" ? "☀️" : "🌓";
+  $("#themeBtn").title = "Theme: " + (t || "match system");
+}
+$("#themeBtn").onclick = () => { const order = ["", "light", "dark"]; const next = order[(order.indexOf(PREF.get("theme") || "") + 1) % 3]; PREF.set("theme", next); applyTheme(next); };
+applyTheme(PREF.get("theme") || "");
+
+// ---- view hooks
+const baseShow = show;
+show = view => {
+  baseShow(view);
+  if (view === "home") renderHome();
+  if (view === "create") renderRefs();
+  if (view === "library") renderKindChips();
+};
+
+// ---- home
+function greeting() { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; }
+async function renderHome() {
+  $("#greet").textContent = greeting();
+  const o = await DATA.overview().catch(() => null); if (!o) return;
+  const tile = (n, label, go) => `<div class="tile" tabindex="0" role="button" data-go="${go}"><div class="n">${typeof n === "number" ? n.toLocaleString() : n}</div><div class="l">${label}</div></div>`;
+  $("#tiles").innerHTML = tile(o.documents, "documents", "library") + tile(o.links, "connections", "graph")
+    + tile(o.byKind.email || 0, "emails", "library:email") + tile(o.sources.length, "sources", "sources")
+    + tile(o.claude ? "✓" : "–", o.claude ? "Claude connected" : "Claude not connected", "sources");
+  const recent = await DATA.recent(8).catch(() => []);
+  $("#homeRecent").innerHTML = recent.length ? recent.map(d => `<div class="list-item" data-doc="${d.id}"><span>${kindIcon(d.kind)}</span><span class="t grow">${esc(d.title)}</span><span class="small muted" style="flex:none">${ago(d.at)}</span></div>`).join("")
+    : '<div class="empty" style="padding:20px">Nothing yet. <a href="#" data-goto="sources">Add your first folder →</a></div>';
+  $("#homeSources").innerHTML = o.sources.length ? o.sources.map(s => `<div class="list-item" data-goto="sources"><span class="dot ${s.errors ? "warn" : "good"}"></span><span class="t grow">${esc(s.name)}</span><span class="small muted" style="flex:none">${s.documents} docs · synced ${ago(s.at)}${s.errors ? ` · ${s.errors} issue(s)` : ""}</span></div>`).join("")
+    : '<div class="empty" style="padding:20px">No sources connected yet.</div>';
+}
+function homeAsk() { const q = $("#homeAsk").value.trim(); if (!q) return; $("#homeAsk").value = ""; show("ask"); $("#question").value = q; ask(); }
+$("#homeAskBtn").onclick = homeAsk;
+$("#homeAsk").addEventListener("keydown", e => { if (e.key === "Enter") homeAsk(); });
+
+// ---- library type filter
+async function renderKindChips() {
+  const o = await DATA.overview().catch(() => null); if (!o) return;
+  const kinds = Object.entries(o.byKind).sort((a, b) => b[1] - a[1]);
+  let box = $("#libKinds");
+  if (!box) { box = document.createElement("div"); box.id = "libKinds"; box.className = "chips"; box.style.margin = "0 0 12px"; $("#view-library .card").after(box); }
+  box.innerHTML = `<button class="chip ${LIB_KIND ? "" : "on"}" data-kind="">All · ${o.documents}</button>`
+    + kinds.map(([k, n]) => `<button class="chip ${LIB_KIND === k ? "on" : ""}" data-kind="${esc(k)}">${kindIcon(k)} ${esc(KIND_LABEL[k] || k)} · ${n}</button>`).join("");
+}
+
+// ---- create: templates, references, AI / no-AI
+const REFS = new Map(); // doc id -> title
+let createType = "docx";
+const PRESETS = [
+  { label: "Executive brief", type: "docx", topic: "Executive brief: ", instr: "One page for a senior client audience. Lead with the answer, then 3-5 supporting points with evidence, risks, and clear next steps." },
+  { label: "Proposal", type: "docx", topic: "Proposal: ", instr: "Sections: context and objectives, approach and phases, deliverables, timeline, team, commercials (placeholder), why us." },
+  { label: "Meeting summary", type: "docx", topic: "Meeting summary: ", instr: "Attendees, key discussion points, decisions, open questions, and action items with owners and dates." },
+  { label: "Status update", type: "md", topic: "Status update: ", instr: "Overall RAG status, progress since last update, next steps, risks and issues, decisions needed." },
+  { label: "Client deck", type: "deck", topic: "", instr: "Storyline: situation, complication, key insights, recommendation, roadmap, next steps.", slides: 10 },
+  { label: "Board update", type: "deck", topic: "Board update: ", instr: "Board audience. Action titles, one key number per slide, finish with the decisions required.", slides: 6 },
+];
+$("#presets").innerHTML = PRESETS.map((p, i) => `<button class="chip" data-preset="${i}">${p.type === "deck" ? "📊" : "📄"} ${esc(p.label)}</button>`).join("");
+function setCreateType(t) {
+  createType = t;
+  $$("#createType button").forEach(x => x.classList.toggle("on", x.dataset.t === t));
+  $("#slidesRow").style.display = t === "deck" ? "" : "none";
+}
+$$("#createType button").forEach(b => b.onclick = () => setCreateType(b.dataset.t));
+function usePreset(i) {
+  const p = PRESETS[i], topic = $("#cTopic").value;
+  setCreateType(p.type);
+  if (!topic.trim() || PRESETS.some(x => x.topic && topic === x.topic)) $("#cTopic").value = p.topic;
+  $("#cInstr").value = p.instr; if (p.slides) $("#cSlides").value = p.slides;
+  $$("#presets .chip").forEach((c, j) => c.classList.toggle("on", j === i));
+  const t = $("#cTopic"); t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+}
+function renderRefs() {
+  $("#refCount").textContent = REFS.size;
+  const badge = $("#navRefCount"); badge.textContent = REFS.size; badge.hidden = !REFS.size;
+  $("#refChips").innerHTML = REFS.size ? [...REFS].map(([id, t]) => `<span class="chip on" data-doc="${id}" title="Open">${esc(t)}<button class="x" data-unref="${id}" aria-label="Remove ${esc(t)}">✕</button></span>`).join("")
+    : '<span class="small muted">None picked: the brain will choose the most relevant documents for your topic.</span>';
+  $$("#refResults [data-ref]").forEach(b => { b.textContent = REFS.has(+b.dataset.ref) ? "✓ Added" : "+ Add"; });
+  const claude = typeof STATUS !== "undefined" && STATUS && STATUS.claude_configured;
+  $("#aiHint").innerHTML = claude ? "With AI, Claude writes from your references and cites them. Without AI, a draft is assembled from the most relevant passages. No API call, no cost."
+    : "Claude isn't connected, so <b>Generate with AI</b> will fall back to a draft. <a href='#' data-goto='sources'>Add your key</a> for written documents.";
+}
+function addRef(id, title, quiet) {
+  REFS.set(+id, title); renderRefs();
+  if (!quiet) toast(`Added “${title}” to Create · ${REFS.size} reference${REFS.size > 1 ? "s" : ""}`);
+}
+let refToken = 0;
+async function findRefs(q) {
+  if (!q) return;
+  const token = ++refToken; $("#refResults").innerHTML = '<div class="empty" style="padding:14px"><span class="spinner"></span></div>';
+  const hits = await DATA.search(q, 20).catch(() => []); if (token !== refToken) return;
+  const seen = new Set(), rows = [];
+  for (const h of hits) if (!seen.has(h.doc_id)) { seen.add(h.doc_id); rows.push(h); }
+  $("#refResults").innerHTML = rows.length ? rows.map(h => `<div class="list-item"><span class="t grow" data-doc="${h.doc_id}">${esc(h.title)}</span><span class="small muted" style="flex:none">${esc(h.source)}</span>
+      <button class="btn small ref-add" data-ref="${h.doc_id}" data-ref-title="${esc(h.title)}">${REFS.has(h.doc_id) ? "✓ Added" : "+ Add"}</button></div>`).join("")
+    : '<div class="empty" style="padding:14px">No matching documents.</div>';
+}
+$("#refFind").onclick = () => findRefs($("#refSearch").value.trim());
+$("#refSearch").addEventListener("keydown", e => { if (e.key === "Enter") findRefs($("#refSearch").value.trim()); });
+$("#refSuggest").onclick = () => { const t = $("#cTopic").value.trim(); if (!t) { toast("Type a topic first"); $("#cTopic").focus(); return; } $("#refSearch").value = t; findRefs(t); };
+$("#refClear").onclick = () => { REFS.clear(); renderRefs(); };
+async function runCreate(useAi) {
+  const topic = $("#cTopic").value.trim();
+  if (!topic) { toast("Add a topic first"); $("#cTopic").focus(); return; }
+  const body = { topic, format: createType, slides: +$("#cSlides").value || 8, instructions: $("#cInstr").value.trim(), doc_ids: [...REFS.keys()], use_ai: useAi };
+  const btns = [$("#createAI"), $("#createNoAI")]; btns.forEach(b => b.disabled = true);
+  $("#createNote").innerHTML = `<span class="spinner"></span> ${useAi ? "Claude is reading your references and writing… (a minute or two)" : "Assembling a draft from your references…"}`;
+  try {
+    const r = await DATA.create(createType, body), name = DATA.fileName(r);
+    const how = r.mode === "claude" ? "✨ Written by Claude" : r.mode === "no_ai" ? "📄 Built without AI" : "⚠️ Claude unavailable: draft built without AI";
+    $("#createResults").insertAdjacentHTML("afterbegin", `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${createType === "deck" ? "📊" : "📄"} ${esc(name)}</b>
+      <div class="small muted">${how} · ${r.sources.length} source${r.sources.length === 1 ? "" : "s"} · kept in your Library</div></div>
+      <a class="btn primary" href="${DATA.downloadUrl(r)}" download="${esc(name)}">Download</a></div>
+      <div class="chips" style="margin-top:10px">${r.sources.map(s => `<span class="chip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div></div>`);
+    $("#createNote").textContent = "";
+  } catch (e) { $("#createNote").textContent = "Failed: " + e.message; }
+  btns.forEach(b => b.disabled = false);
+}
+$("#createAI").onclick = () => runCreate(true);
+$("#createNoAI").onclick = () => runCreate(false);
+
+// ---- answer actions (called from ask())
+const ANSWERS = [];
+function answerActions(q, r) {
+  const i = ANSWERS.push({ q, r }) - 1;
+  return `<div class="actions">${r.sources.length ? `<button class="btn small" data-ans-create="${i}">✨ Create from these sources</button>` : ""}
+    <button class="btn small" data-ans-save="${i}">📝 Save to brain</button><button class="btn small" data-ans-copy="${i}">📋 Copy</button></div>`;
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+  const ok = document.execCommand("copy"); ta.remove(); return ok;
+}
+
+// ---- quick find (Ctrl/⌘+K)
+const PAL_PAGES = [["🏠 Home", "home"], ["💬 Ask", "ask"], ["🔎 Search", "search"], ["📚 Library", "library"], ["🕸️ Connections", "graph"], ["✨ Create", "create"], ["🔌 Sources & settings", "sources"]];
+let palItems = [], palSel = 0, palTimer = null, palToken = 0;
+function openPalette() { $("#palette").classList.add("open"); $("#palInput").value = ""; palRender(""); setTimeout(() => $("#palInput").focus(), 0); }
+function closePalette() { $("#palette").classList.remove("open"); }
+async function palRender(q) {
+  const token = ++palToken, items = [];
+  if (q) {
+    items.push({ label: `💬 Ask: “${q}”`, sub: "question", run: () => { show("ask"); $("#question").value = q; ask(); } });
+    const hits = await DATA.search(q, 10).catch(() => []); if (token !== palToken) return;
+    const seen = new Set();
+    for (const h of hits) if (!seen.has(h.doc_id)) { seen.add(h.doc_id); items.push({ label: "📄 " + h.title, sub: h.source, run: () => openDoc(h.doc_id) }); }
+  }
+  for (const [label, view] of PAL_PAGES) if (!q || label.toLowerCase().includes(q.toLowerCase())) items.push({ label, sub: "page", run: () => show(view) });
+  palItems = items; palSel = 0; drawPalette();
+}
+function drawPalette() {
+  $("#palList").innerHTML = palItems.map((it, i) => `<div class="pal-item ${i === palSel ? "sel" : ""}" role="option" data-pal="${i}"><span class="grow">${esc(it.label)}</span><span class="small muted">${esc(it.sub || "")}</span></div>`).join("")
+    || '<div class="pal-item muted">No matches</div>';
+  $("#palList .sel")?.scrollIntoView({ block: "nearest" });
+}
+$("#palInput").addEventListener("input", e => { clearTimeout(palTimer); palTimer = setTimeout(() => palRender(e.target.value.trim()), 120); });
+$("#palInput").addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { palSel = Math.min(palSel + 1, palItems.length - 1); drawPalette(); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { palSel = Math.max(palSel - 1, 0); drawPalette(); e.preventDefault(); }
+  else if (e.key === "Enter") { const it = palItems[palSel]; if (it) { closePalette(); it.run(); } }
+  else if (e.key === "Escape") closePalette();
+});
+$("#palette").addEventListener("click", e => { const it = e.target.closest("[data-pal]"); if (it) { closePalette(); palItems[+it.dataset.pal].run(); } else if (e.target.id === "palette") closePalette(); });
+$("#findBtn").onclick = openPalette;
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("#palette").classList.contains("open") ? closePalette() : openPalette(); }
+  else if (e.key === "Escape") closePalette();
+  else if ((e.key === "Enter" || e.key === " ") && e.target.classList?.contains("tile")) { e.preventDefault(); e.target.click(); }
+});
+
+// ---- one capture-phase click handler for the new controls (runs before the "open document" handler)
+document.addEventListener("click", async e => {
+  const t = e.target, hit = sel => t.closest(sel);
+  let el;
+  if ((el = hit("[data-ref]"))) { e.stopPropagation(); e.preventDefault(); addRef(el.dataset.ref, el.dataset.refTitle); el.textContent = "✓ Added"; }
+  else if ((el = hit("[data-unref]"))) { e.stopPropagation(); REFS.delete(+el.dataset.unref); renderRefs(); }
+  else if ((el = hit("[data-preset]"))) usePreset(+el.dataset.preset);
+  else if ((el = hit("[data-kind]"))) { LIB_KIND = el.dataset.kind; renderKindChips(); loadLibrary(true); }
+  else if ((el = hit("[data-go]"))) { const [view, kind] = el.dataset.go.split(":"); if (view === "library") LIB_KIND = kind || ""; show(view); }
+  else if ((el = hit("[data-create]"))) { show("create"); setCreateType(el.dataset.create); $("#cTopic").focus(); }
+  else if (hit("[data-remember]")) $("#rememberBtn").click();
+  else if ((el = hit("[data-ans-create]"))) {
+    const { q, r } = ANSWERS[+el.dataset.ansCreate];
+    REFS.clear(); r.sources.forEach(s => REFS.set(+s.doc_id, s.title));
+    show("create"); $("#cTopic").value = q; toast(`${REFS.size} sources added as references`);
+  } else if ((el = hit("[data-ans-save]"))) {
+    const { q, r } = ANSWERS[+el.dataset.ansSave];
+    const text = `Question: ${q}\n\n${r.answer}\n\nSources: ${r.sources.map(s => `[${s.n}] ${s.title}`).join("; ")}`;
+    await DATA.remember(text, "Answer: " + q.slice(0, 70), ["answer"]); el.textContent = "✓ Saved"; el.disabled = true;
+  } else if ((el = hit("[data-ans-copy]"))) {
+    const { r } = ANSWERS[+el.dataset.ansCopy];
+    toast((await copyText(r.answer)) ? "Answer copied" : "Couldn't copy: select the text instead");
+  }
+}, true);
+renderRefs();
+
 // ---------- boot ----------
 (async () => {
   await Brain.load();
   await Brain.checkPermissions();
   refreshStatus();
-  show(settings.get("view") || "ask");
+  show(settings.get("view") || "home");
   Brain.startSync(); // pick up changes in folders we still have access to
   setInterval(() => { if (!Brain.sync.running && !document.hidden) Brain.startSync(); }, 60000); // keep learning
 })();
