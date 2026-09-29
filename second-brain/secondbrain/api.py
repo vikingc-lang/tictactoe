@@ -5,7 +5,10 @@ Endpoints (JSON):
   GET  /search?q=...&limit=8        GET  /documents/{id}
   GET  /graph                       GET  /documents/{id}/related
   GET  /documents/{id}/file         GET  /outputs/{filename}      (download originals / creations)
-  POST /ask        {"question"}     POST /remember {"text", "title"?, "tags"?}
+  GET  /search?q=&days=30            (days: only documents dated in the last N days)
+  POST /ask        {"question", "history"?: [{"q", "a"}]}   POST /remember {"text", "title"?, "tags"?}
+  GET  /digest?days=7               POST /digest {"days"?, "use_ai"?}   (what's new, optionally briefed)
+  GET  /collections                 POST /collections {"name", "doc_ids"}   POST /collections/remove {"name"}
   POST /sync       {"source"?}      (runs in the background; poll /status)
   POST /enrich     {"limit"?}
   POST /sources    {"type", "name", "target"}      POST /sources/remove {"name"}
@@ -27,6 +30,7 @@ import os
 import re
 import threading
 import time
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -59,6 +63,15 @@ class BrainService:
         self.brain = brain
         self.lock = threading.RLock()  # one SQLite connection: serialise access
         self.sync_state: dict[str, Any] = {"running": False, "last_finished": None, "last_results": []}
+
+    @contextmanager
+    def worker(self):
+        """A Brain on its own SQLite connection for slow work (Claude calls), so the app never freezes."""
+        w = Brain(self.brain.config, llm=self.brain.llm)
+        try:
+            yield w
+        finally:
+            w.store.close()
 
     def config_file(self) -> Path:
         return self.brain.config.config_path or DEFAULT_HOME / "brain.toml"
@@ -216,7 +229,12 @@ def make_handler(service: BrainService, token: str | None):
                     return self._output_file(m.group(1))
                 with lock:
                     if p == "/search":
-                        return [h.to_dict() for h in brain.search(q["q"], int(q.get("limit", 8)), q.get("source"))]
+                        days = int(q["days"]) if q.get("days") else None
+                        return [h.to_dict() for h in brain.search(q["q"], int(q.get("limit", 8)), q.get("source"), days)]
+                    if p == "/digest":
+                        return brain.whats_new(int(q.get("days", 7)))
+                    if p == "/collections":
+                        return brain.collections()
                     if p == "/graph":
                         return brain.graph()
                     if p == "/documents":
@@ -248,19 +266,27 @@ def make_handler(service: BrainService, token: str | None):
                 save_secret(brain.config.data_dir, "ANTHROPIC_API_KEY", key)
                 brain.llm._client = None  # pick up the new key on the next call
                 return {"saved": True}
-            with lock:
-                if p == "/ask":
-                    return brain.ask(body["question"])
-                if p == "/remember":
-                    return brain.remember(body["text"], body.get("title"), body.get("tags"))
-                if p == "/enrich":
-                    return brain.enrich(int(body.get("limit", 20)))
-                if p in ("/create/document", "/create/deck"):
+            # Slow work that may call Claude runs on its own connection, outside the shared lock.
+            if p in ("/ask", "/enrich", "/digest", "/create/document", "/create/deck"):
+                with service.worker() as w:
+                    if p == "/ask":
+                        return w.ask(body["question"], history=body.get("history"))
+                    if p == "/enrich":
+                        return w.enrich(int(body.get("limit", 20)))
+                    if p == "/digest":
+                        return w.whats_new(int(body.get("days", 7)), use_ai=body.get("use_ai", False) is True)
                     opts = {"instructions": body.get("instructions", ""), "use_ai": body.get("use_ai", True) is not False,
                             "doc_ids": [int(i) for i in body.get("doc_ids") or []] or None}
                     if p == "/create/deck":
-                        return self._with_download(brain.create_deck(body["topic"], int(body.get("slides", 8)), **opts))
-                    return self._with_download(brain.create_document(body["topic"], body.get("format", "md"), **opts))
+                        return self._with_download(w.create_deck(body["topic"], int(body.get("slides", 8)), **opts))
+                    return self._with_download(w.create_document(body["topic"], body.get("format", "md"), **opts))
+            with lock:
+                if p == "/remember":
+                    return brain.remember(body["text"], body.get("title"), body.get("tags"))
+                if p == "/collections":
+                    return brain.save_collection(body["name"], body.get("doc_ids") or [])
+                if p == "/collections/remove":
+                    return brain.delete_collection(body["name"])
             return None
 
         def _with_download(self, result: dict[str, Any]) -> dict[str, Any]:

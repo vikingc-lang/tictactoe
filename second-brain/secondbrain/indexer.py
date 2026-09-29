@@ -44,11 +44,14 @@ def index_item(store: Store, source: str, item: Item, text: str | None = None) -
     if text is None:
         text, title_hint = parse(item.load(), item.ext)
     text = text.strip()
+    if not text:
+        raise ValueError("no readable text (empty file, or a scanned PDF that needs OCR)")
     title = title_hint or title_from_text(text) or item.title
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     doc_id, changed = store.upsert_document(
         source=source, uri=item.uri, title=title, kind=kind_for(item.ext), content_hash=digest,
         modified=item.modified, text=text,
+        doc_date=item.date or (item.modified if item.modified and item.modified > 1e8 else None),
     )
     if not changed:
         return doc_id, "unchanged"

@@ -160,6 +160,13 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
 .nav button .pill { margin-left: auto; }
 .btn:focus-visible, .chip:focus-visible, .nav button:focus-visible, .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 760px) { .grid2, .qa { grid-template-columns: 1fr; } .navtools { padding: 0; } .navtools #findBtn kbd { display: none; } }
+
+/* ---- v0.3: digest, collections, conversation, dates ---- */
+.brief { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; }
+.datepill { font-variant-numeric: tabular-nums; }
+.collbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.collbar select { width: auto; min-width: 200px; }
+.askhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -203,13 +210,22 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
           </div></div>
         <div class="card"><h3 style="margin-top:0">Recently added</h3><div id="homeRecent"></div></div>
       </div>
+      <div class="card" style="margin-top:16px" id="digestCard">
+        <div class="row" style="justify-content:space-between">
+          <h3 style="margin:0">What's new <select id="digestDays" aria-label="Period" style="width:auto;display:inline-block;padding:3px 8px;font-size:13px;margin-left:6px"><option value="1">today</option><option value="7" selected>last 7 days</option><option value="30">last 30 days</option></select></h3>
+          <button class="btn small primary" id="briefBtn">✨ Brief me</button>
+        </div>
+        <div class="small muted" id="digestSummary" style="margin-top:6px"></div>
+        <div id="digestList" style="margin-top:4px"></div>
+        <div id="digestBrief"></div>
+      </div>
       <div class="card" style="margin-top:16px"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Sources</h3><a href="#" data-goto="sources" class="small">Manage →</a></div><div id="homeSources" style="margin-top:6px"></div></div>
     </section>
 
     <!-- ASK -->
     <section class="view" id="view-ask">
-      <h1>Ask your brain</h1>
-      <p class="sub">Answers come from your own documents, with numbered citations you can open.</p>
+      <div class="askhead"><h1>Ask your brain</h1><button class="btn small" id="newChat" title="Start over: forget the earlier questions">＋ New conversation</button></div>
+      <p class="sub">Answers come from your own documents, with numbered citations you can open. Ask follow-up questions: the conversation is remembered until you start a new one.</p>
       <div id="welcome" class="card" style="display:none">
         <h3 style="margin-top:0">Welcome 👋 Let's connect your knowledge</h3>
         <div class="steps">
@@ -236,6 +252,7 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
       <div class="card row">
         <input type="text" id="searchBox" class="grow" placeholder="Search words or phrases…">
         <select id="searchSource" style="width:auto"><option value="">All sources</option></select>
+        <select id="searchDays" style="width:auto" aria-label="Date"><option value="">Any time</option><option value="7">Past week</option><option value="30">Past month</option><option value="90">Past 3 months</option><option value="365">Past year</option></select>
         <button class="btn primary" id="searchBtn">Search</button>
       </div>
       <div class="card" id="searchResults"><div class="empty">Type something to search.</div></div>
@@ -292,6 +309,11 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
           <button class="btn" id="refSuggest" title="Search using the topic above">Suggest from topic</button>
         </div>
         <div id="refResults" style="margin-top:6px"></div>
+        <div class="collbar">
+          <select id="colSelect" aria-label="Load a collection"><option value="">📁 Load a collection…</option></select>
+          <button class="btn small" id="colSave">💾 Save as collection</button>
+          <button class="btn small danger" id="colDelete" hidden>Delete collection</button>
+        </div>
         <div class="hint">Tip: you can also add documents with <b>+ Use in Create</b> from Search results, from any open document, or from an answer on the Ask page.</div>
       </div>
       <div class="card">
@@ -467,7 +489,7 @@ async function openDoc(id) {
   const isFile = d.uri.startsWith("file:");
   const rel = d.related.length ? d.related.map(r => `<div class="rel" data-doc="${r.doc_id}"><span class="pill ${r.kind === "explicit" || r.kind === "attachment" ? "accent" : ""}">${r.kind === "explicit" ? "link" : r.kind === "attachment" ? "attachment" : r.kind === "related" ? "similar" : "shared"}</span><span class="t">${esc(r.title)}</span><span class="muted small">${esc(r.label || "")}</span></div>`).join("") : '<p class="muted small">No connections yet.</p>';
   $("#dBody").innerHTML = `
-    <div class="row small muted" style="margin-bottom:10px"><span class="pill">${esc(d.kind)}</span><span class="pill">${esc(d.source)}</span><span>indexed ${ago(d.indexed_at)}</span>${d.revisions.length ? `<span>· ${d.revisions.length} earlier version(s)</span>` : ""}</div>
+    <div class="row small muted" style="margin-bottom:10px"><span class="pill">${esc(d.kind)}</span><span class="pill">${esc(d.source)}</span>${d.date ? `<span class="datepill">dated ${fmtDate(d.date)} ·</span>` : ""}<span>indexed ${ago(d.indexed_at)}</span>${d.revisions.length ? `<span>· ${d.revisions.length} earlier version(s)</span>` : ""}</div>
     <div class="row" style="margin-bottom:14px">${isFile ? `<a class="btn small" href="${withToken(`/documents/${d.id}/file`)}" target="_blank">Open original</a><a class="btn small" href="${withToken(`/documents/${d.id}/file?download=1`)}">Download</a>` : d.uri.startsWith("http") ? `<a class="btn small" href="${esc(d.uri)}" target="_blank" rel="noopener">Open web page</a>` : ""}
       <button class="btn small" id="dAsk">Ask about this</button><button class="btn small" data-ref="${d.id}" data-ref-title="${esc(d.title)}">+ Use in Create</button></div>
     ${d.summary ? `<h4 style="margin:6px 0">Summary</h4><p>${esc(d.summary)}</p>` : ""}
@@ -493,7 +515,8 @@ async function ask() {
   chat.appendChild(bot); bot.scrollIntoView({ behavior: "smooth", block: "end" });
   $("#askBtn").disabled = true;
   try {
-    const r = await api("/ask", { question: q });
+    const r = await api("/ask", { question: q, history: CHAT.slice(-3) });
+    if (r.mode === "claude") CHAT.push({ q, a: r.answer });
     const bySrc = Object.fromEntries(r.sources.map(s => [s.n, s]));
     bot.innerHTML = (r.mode === "extractive" ? '<p class="small" style="color:var(--warn)">Claude isn\'t connected, so here are the most relevant passages. Add your key under Sources &amp; settings for written answers.</p>' : "")
       + `<div class="md">${md(r.answer.replace(/^\(Claude unavailable[^)]*\)\s*/, ""))}</div>`
@@ -514,12 +537,13 @@ async function doSearch() {
   const box = $("#searchResults"); box.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
   const src = $("#searchSource").value;
   try {
-    const hits = await api(`/search?q=${encodeURIComponent(q)}&limit=25${src ? "&source=" + encodeURIComponent(src) : ""}`);
+    const days = $("#searchDays").value;
+    const hits = await api(`/search?q=${encodeURIComponent(q)}&limit=25${src ? "&source=" + encodeURIComponent(src) : ""}${days ? "&days=" + days : ""}`);
     const words = q.toLowerCase().split(/\W+/).filter(w => w.length > 2);
     const hl = s => { let h = esc(s); for (const w of words) h = h.replace(new RegExp(`(${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\w*)`, "gi"), "<mark>$1</mark>"); return h; };
     box.innerHTML = hits.length ? hits.map(h => {
       const t = h.text.replace(/\s+/g, " "); const i = Math.max(0, t.toLowerCase().indexOf(words[0] || "") - 80);
-      return `<div class="result" data-doc="${h.doc_id}"><div class="rtitle">${esc(h.title)}</div><div class="snippet">${i ? "…" : ""}${hl(t.slice(i, i + 260))}…</div><div class="row small muted"><span>${esc(h.source)}</span><button class="btn small ref-add" data-ref="${h.doc_id}" data-ref-title="${esc(h.title)}">+ Use in Create</button></div></div>`;
+      return `<div class="result" data-doc="${h.doc_id}"><div class="rtitle">${esc(h.title)}</div><div class="snippet">${i ? "…" : ""}${hl(t.slice(i, i + 260))}…</div><div class="row small muted"><span>${esc(h.source)}</span>${h.date ? `<span class="datepill">· ${fmtDate(h.date)}</span>` : ""}<button class="btn small ref-add" data-ref="${h.doc_id}" data-ref-title="${esc(h.title)}">+ Use in Create</button></div></div>`;
     }).join("") : '<div class="empty">No matches. Try different words, or check the source is synced.</div>';
   } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
@@ -687,15 +711,19 @@ function tick() {
 // Data adapter: the server app talks to the local REST API.
 const PREF = store;
 const DATA = {
-  search: (q, limit = 8) => api(`/search?q=${encodeURIComponent(q)}&limit=${limit}`),
-  recent: n => api(`/documents?limit=${n}`).then(ds => ds.map(d => ({ id: d.id, title: d.title, kind: d.kind, at: d.indexed_at }))),
+  search: (q, limit = 8, days) => api(`/search?q=${encodeURIComponent(q)}&limit=${limit}${days ? "&days=" + days : ""}`),
+  recent: n => api(`/documents?limit=${n}`).then(ds => ds.map(d => ({ id: d.id, title: d.title, kind: d.kind, at: d.indexed_at, date: d.date }))),
   overview: async () => {
     const s = await api("/status");
     return { documents: s.stats.documents, links: s.stats.links, byKind: s.stats.by_kind || {}, claude: s.claude_configured,
-      sources: s.sources.map(x => ({ name: x.name === "_outputs" ? "Created by the brain" : x.name, documents: x.documents, at: x.last_sync, errors: (x.last_stats?.errors || []).length })) };
+      sources: s.sources.map(x => ({ name: ({ _outputs: "Created by the brain", _answers: "Saved answers" })[x.name] || x.name, documents: x.documents, at: x.last_sync, errors: (x.last_stats?.errors || []).length })) };
   },
   create: (type, body) => api(type === "deck" ? "/create/deck" : "/create/document", body),
   remember: (text, title, tags) => api("/remember", { text, title, tags }),
+  digest: (days, useAi) => useAi ? api("/digest", { days, use_ai: true }) : api(`/digest?days=${days}`),
+  collections: () => api("/collections"),
+  saveCollection: (name, ids) => api("/collections", { name, doc_ids: ids }),
+  deleteCollection: name => api("/collections/remove", { name }),
   fileName: r => r.path.split(/[\\/]/).pop(),
   downloadUrl: r => withToken(r.download + "?download=1"),
 };
@@ -843,7 +871,7 @@ async function copyText(text) {
 // ---- quick find (Ctrl/⌘+K)
 const PAL_PAGES = [["🏠 Home", "home"], ["💬 Ask", "ask"], ["🔎 Search", "search"], ["📚 Library", "library"], ["🕸️ Connections", "graph"], ["✨ Create", "create"], ["🔌 Sources & settings", "sources"]];
 let palItems = [], palSel = 0, palTimer = null, palToken = 0;
-function openPalette() { $("#palette").classList.add("open"); $("#palInput").value = ""; palRender(""); setTimeout(() => $("#palInput").focus(), 0); }
+function openPalette() { $("#palette").classList.add("open"); $("#palInput").value = ""; $("#palInput").focus(); palRender(""); }
 function closePalette() { $("#palette").classList.remove("open"); }
 async function palRender(q) {
   const token = ++palToken, items = [];
@@ -901,6 +929,63 @@ document.addEventListener("click", async e => {
   }
 }, true);
 renderRefs();
+
+
+// ===================== v0.3: follow-up conversation, dates, what's new, collections =====================
+const CHAT = [];  // earlier turns, sent with each question so follow-ups work
+const fmtDate = ts => ts ? new Date(ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+$("#newChat").onclick = () => { CHAT.length = 0; $("#chat").innerHTML = ""; $("#question").focus(); toast("New conversation"); };
+
+// ---- what's new (Home)
+async function renderDigest() {
+  const days = +$("#digestDays").value;
+  const d = await DATA.digest(days, false).catch(() => null); if (!d) return;
+  const kinds = Object.entries(d.by_kind).map(([k, n]) => `${n} ${(KIND_LABEL[k] || k).toLowerCase().replace(n === 1 ? /s$/ : /$^/, "")}`).join(", ");
+  $("#digestSummary").textContent = d.count ? `${d.count} new or changed${kinds ? ": " + kinds : ""}` : "Nothing new in this period.";
+  $("#digestList").innerHTML = d.docs.slice(0, 6).map(x => `<div class="list-item" data-doc="${x.id}"><span>${kindIcon(x.kind)}</span><span class="t grow">${esc(x.title)}</span><span class="small muted datepill" style="flex:none">${fmtDate(x.date)}</span></div>`).join("");
+  $("#briefBtn").disabled = !d.count;
+}
+$("#digestDays").onchange = () => { $("#digestBrief").innerHTML = ""; renderDigest(); };
+$("#briefBtn").onclick = async () => {
+  const b = $("#briefBtn"); b.disabled = true; $("#digestBrief").innerHTML = '<div class="brief"><span class="spinner"></span> Reading what\'s new…</div>';
+  try {
+    const d = await DATA.digest(+$("#digestDays").value, true);
+    if (!d.briefing) { $("#digestBrief").innerHTML = `<div class="brief small" style="color:var(--warn)">${esc(d.error || "Claude isn't connected")}. Add your key under Sources &amp; settings for a written briefing.</div>`; return; }
+    const bySrc = Object.fromEntries(d.sources.map(s => [s.n, s]));
+    $("#digestBrief").innerHTML = `<div class="brief md">${md(d.briefing)}</div>`;
+    $$("#digestBrief .cite").forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } });
+  } catch (e) { $("#digestBrief").innerHTML = `<div class="brief small" style="color:var(--bad)">${esc(e.message)}</div>`; }
+  finally { b.disabled = false; }
+};
+const homeBase = renderHome;
+renderHome = async () => { await homeBase(); renderDigest(); };
+
+// ---- collections (Create)
+let COLLS = [];
+async function loadCollections() {
+  COLLS = await DATA.collections().catch(() => []);
+  const cur = $("#colSelect").value;
+  $("#colSelect").innerHTML = '<option value="">📁 Load a collection…</option>' + COLLS.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${c.doc_ids.length})</option>`).join("");
+  $("#colSelect").value = COLLS.some(c => c.name === cur) ? cur : "";
+  $("#colDelete").hidden = !$("#colSelect").value;
+}
+$("#colSelect").onchange = () => {
+  const c = COLLS.find(x => x.name === $("#colSelect").value); $("#colDelete").hidden = !c; if (!c) return;
+  REFS.clear(); c.doc_ids.forEach((id, i) => REFS.set(+id, c.titles[i])); renderRefs(); toast(`Loaded “${c.name}”: ${REFS.size} references`);
+};
+$("#colSave").onclick = async () => {
+  if (!REFS.size) { toast("Pick some reference documents first"); return; }
+  const name = prompt("Name this collection (e.g. a client or project):", $("#colSelect").value || "");
+  if (!name || !name.trim()) return;
+  try { await DATA.saveCollection(name.trim(), [...REFS.keys()]); await loadCollections(); $("#colSelect").value = name.trim(); $("#colDelete").hidden = false; toast(`Saved collection “${name.trim()}”`); }
+  catch (e) { toast(e.message); }
+};
+$("#colDelete").onclick = async () => {
+  const name = $("#colSelect").value; if (!name || !confirm(`Delete collection “${name}”? The documents themselves are kept.`)) return;
+  await DATA.deleteCollection(name); await loadCollections(); toast("Collection deleted");
+};
+const createShowBase = show;
+show = view => { createShowBase(view); if (view === "create") loadCollections(); };
 
 // ---------- boot ----------
 refreshStatus().then(() => show(store.get("brainView") || "home"));

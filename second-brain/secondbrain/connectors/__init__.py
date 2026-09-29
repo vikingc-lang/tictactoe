@@ -24,6 +24,7 @@ class Item:
     load: Callable[[], bytes]
     text: str | None = None       # already-extracted text (skips the file parser)
     parent_uri: str | None = None  # e.g. the email an attachment came with
+    date: float | None = None      # when it was written/sent (defaults to the file's modified time)
 
 
 class Connector(Protocol):

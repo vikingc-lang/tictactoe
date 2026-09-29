@@ -14,13 +14,20 @@ those through to too under until up very was we were what when where which while
 you your yours page slide notes one two three new use used using may might must shall will also etc via per
 """.split())
 
-_WORD = re.compile(r"[A-Za-z][A-Za-z0-9\-]{2,}")
+_WORD = re.compile(r"[^\W\d_][\w\-]{2,}")            # 3+ chars, any language (Zürich, São)
+_QUERY_WORD = re.compile(r"[^\W_][\w\-&+.]*")          # queries also keep short terms: AI, HR, Q3, M&A
 WIKILINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 MDLINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
 
 def tokenize(text: str) -> list[str]:
     return [w for w in (m.group(0).lower().strip("-") for m in _WORD.finditer(text)) if w not in STOPWORDS]
+
+
+def query_terms(query: str) -> list[str]:
+    """Search terms from a user query: like tokenize(), but short words (AI, HR, Q3) are kept."""
+    terms = [m.group(0).lower().strip("-.") for m in _QUERY_WORD.finditer(query)]
+    return list(dict.fromkeys(t for t in terms if t and t not in STOPWORDS))
 
 
 def term_frequencies(text: str, top: int = 60) -> dict[str, float]:

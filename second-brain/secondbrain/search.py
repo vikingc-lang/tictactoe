@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .store import Store
-from .text import tokenize
+from .text import query_terms
+
+GENERATED_SOURCES = {"_outputs", "_answers"}  # the brain's own creations and saved answers rank below originals
+GENERATED_WEIGHT = 0.6
 
 
 @dataclass
@@ -17,23 +20,25 @@ class Hit:
     source: str
     text: str
     score: float
+    date: float | None = None
 
     def to_dict(self) -> dict:
         return dict(self.__dict__)
 
 
 def _fts_query(query: str) -> str:
-    terms = tokenize(query) or [w for w in query.split() if w]
+    terms = query_terms(query)
     return " OR ".join('"' + t.replace('"', "") + '"' for t in terms[:20])
 
 
-def search(store: Store, query: str, limit: int = 8, per_doc: int = 2, source: str | None = None) -> list[Hit]:
+def search(store: Store, query: str, limit: int = 8, per_doc: int = 2, source: str | None = None,
+           since: float | None = None, include_generated: bool = True) -> list[Hit]:
     q = _fts_query(query)
     if not q:
         return []
     sql = """
         SELECT f.chunk_id, f.doc_id, f.text, bm25(chunks_fts, 0, 0, 3.0, 1.0) AS rank,
-               d.title, d.uri, d.source
+               d.title, d.uri, d.source, COALESCE(d.doc_date, d.indexed_at) AS doc_date
         FROM chunks_fts f JOIN documents d ON d.id = f.doc_id
         WHERE chunks_fts MATCH ? AND d.deleted = 0
     """
@@ -41,6 +46,12 @@ def search(store: Store, query: str, limit: int = 8, per_doc: int = 2, source: s
     if source:
         sql += " AND d.source = ?"
         args.append(source)
+    if since:
+        sql += " AND COALESCE(d.doc_date, d.indexed_at) >= ?"
+        args.append(since)
+    if not include_generated:
+        sql += f" AND d.source NOT IN ({','.join('?' * len(GENERATED_SOURCES))})"
+        args.extend(GENERATED_SOURCES)
     sql += " ORDER BY rank LIMIT ?"
     args.append(limit * 6)
     rows = store.db.execute(sql, args).fetchall()
@@ -60,7 +71,10 @@ def search(store: Store, query: str, limit: int = 8, per_doc: int = 2, source: s
     per: dict[int, int] = {}
     for r in rows:
         score = -r["rank"] * (1 + 0.15 * degree.get(r["doc_id"], 0))
-        hits.append(Hit(r["doc_id"], r["chunk_id"], r["title"], r["uri"], r["source"], r["text"], round(score, 4)))
+        if r["source"] in GENERATED_SOURCES:
+            score *= GENERATED_WEIGHT
+        hits.append(Hit(r["doc_id"], r["chunk_id"], r["title"], r["uri"], r["source"], r["text"], round(score, 4),
+                        r["doc_date"]))
     hits.sort(key=lambda h: -h.score)
     out = []
     for h in hits:

@@ -25,8 +25,11 @@ and slide decks from what you know, using Claude.
 | **Connects the knowledge** | Three edge types: **explicit** (`[[wikilinks]]`, markdown links), **related** (TF-IDF topic similarity), **entity** (the same people, companies or projects, found by Claude). |
 | **Keeps learning** | `brain watch` syncs continuously. Changed files are re-indexed and the old version is kept as a revision. Deleted files are forgotten. An unplugged drive never wipes knowledge. `remember` captures facts from chat. Generated artifacts are indexed too, so the brain builds on its own work. |
 | **Creates** | Cited answers, Markdown/Word documents, and PowerPoint decks (optionally on your branded template). Decks use action titles and speaker notes with citations. **You choose the reference documents** (from search, any open document, or an answer), start from templates (executive brief, proposal, meeting summary, status update, client or board deck), and pick **✨ Generate with AI** or **📄 Build without AI** (a free draft assembled from your references). |
-| **Easy to use** | A Home dashboard, Ctrl/⌘+K quick find from anywhere, actions on every answer (create from its sources, save to the brain, copy), Library filters by type, and a light/dark theme. |
+| **Keeps you current** | **What's new** on Home lists what arrived today, this week or this month, and **✨ Brief me** has Claude write a short briefing on it with citations (`brain digest --days 7 --ai`, MCP tool `whats_new`). Search has a **date filter**, and every result, source and prompt carries the document's date (email sent date, or file date), so Claude can tell what is latest. |
+| **Converses** | Ask follow-up questions (*"and the budget?"*): the last few turns are remembered until you press **New conversation**. |
+| **Easy to use** | A Home dashboard, Ctrl/⌘+K quick find from anywhere, **collections** (save a client's or project's reference documents under a name and reload them in Create), actions on every answer (create from its sources, save to the brain, copy), Library filters by type, and a light/dark theme. |
 | **Plugs into other tools** | **MCP server**: Claude can use the brain alongside Gmail, Calendar, Slack and other MCP servers. **REST API** with bearer-token auth for everything else. |
+| **Stays honest** | Answers and creations are grounded in your original material. The brain's own documents and saved answers stay searchable but are not cited as evidence. Search ignores accents (*Zurich* finds *Zürich*) and keeps short terms like *AI*, *HR* and *Q3*. |
 | **Degrades gracefully** | Without Claude credentials, search, linking and sync still work. `ask` returns cited passages, and `create deck` builds an extractive draft. |
 
 ## Quickest start: one HTML file, nothing to install
@@ -76,6 +79,8 @@ brain ask "What did we recommend to Acme on pricing, and why?"
 brain create docx "Acme pricing strategy – executive brief"
 brain create deck "Acme pricing strategy" --slides 8 --instructions "board audience"
 brain create docx "Ops brief" --docs 12,31,40 --no-ai   # from chosen references, without AI
+brain digest --days 7 --ai          # what's new this week, briefed by Claude
+brain search "pricing" --days 30     # only documents from the last 30 days
 brain enrich --limit 50               # Claude summarises, tags, extracts entities -> more connections
 brain watch                           # keep learning in the background
 ```
@@ -98,8 +103,8 @@ Add this to Claude Desktop's `claude_desktop_config.json` (or `claude mcp add` i
 }
 ```
 
-Tools exposed: `search`, `get_document`, `related`, `ask`, `remember`, `create_document`, `create_deck`,
-`sync`, `status`. Claude can then do things like *"Check my inbox for anything from Acme, cross-reference
+Tools exposed: `search` (with a `days` filter), `get_document`, `related`, `ask`, `whats_new`, `remember`,
+`create_document`, `create_deck` (both accept chosen `doc_ids` and `use_ai`), `sync`, `status`. Claude can then do things like *"Check my inbox for anything from Acme, cross-reference
 it with what the brain knows, and draft a status deck."* That combines this server with your Gmail and
 Drive connectors. For remote clients use `brain mcp --http --port 8765`.
 
@@ -110,6 +115,7 @@ BRAIN_API_TOKEN=change-me brain api --port 8787
 curl -H "Authorization: Bearer change-me" "localhost:8787/search?q=pricing"
 curl -H "Authorization: Bearer change-me" -d '{"question":"Top risks for Acme?"}' localhost:8787/ask
 curl -H "Authorization: Bearer change-me" -d '{"text":"Acme signed the SOW","title":"Acme SOW"}' localhost:8787/remember
+curl -H "Authorization: Bearer change-me" "localhost:8787/digest?days=7"
 ```
 
 Full endpoint list is in [`secondbrain/api.py`](secondbrain/api.py). The API binds to `127.0.0.1` by default.

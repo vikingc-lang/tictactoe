@@ -20,14 +20,14 @@ def _unavailable() -> bytes:  # cached items are never loaded (the indexer sees 
 def email_to_items(uri: str, parsed: ParsedEmail, modified: float | None,
                    attachments: bool = True) -> Iterator[Item]:
     yield Item(uri=uri, title=parsed.subject or "(no subject)", ext=".eml", modified=modified,
-               load=_unavailable, text=parsed.as_text())
+               load=_unavailable, text=parsed.as_text(), date=parsed.timestamp)
     if not attachments:
         return
     for i, att in enumerate(parsed.attachments):
         if att.ext not in ATTACHMENT_EXTS:
             continue
         yield Item(uri=f"{uri}#att{i}-{att.filename}", title=os.path.splitext(att.filename)[0], ext=att.ext,
-                   modified=modified, load=lambda d=att.data: d, parent_uri=uri)
+                   modified=modified, load=lambda d=att.data: d, parent_uri=uri, date=parsed.timestamp)
 
 
 def cached_items(uri: str, known: dict[str, float | None], modified: float | None) -> list[Item] | None:

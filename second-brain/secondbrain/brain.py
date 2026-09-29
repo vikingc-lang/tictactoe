@@ -17,14 +17,20 @@ from .connectors import Item
 from .indexer import SyncStats, index_item, refresh_links, sync_source
 from .llm import LLM, LLMUnavailable
 from .render import Deck, Slide, deck_to_pptx, markdown_to_docx
-from .search import Hit, search
+from .search import GENERATED_SOURCES, Hit, search
 from .store import Store
 from .text import tokenize
 
 ANSWER_SYSTEM = """You are the user's second brain: a research partner that answers from their own knowledge base.
 Ground every claim in the numbered sources provided and cite them inline like [1] or [2][4].
 If the sources don't contain the answer, say what is missing rather than guessing, then offer what you do know,
-clearly marked as general knowledge. Prefer crisp, structured answers a busy consultant can act on."""
+clearly marked as general knowledge. Prefer crisp, structured answers a busy consultant can act on.
+Each source shows its date; when sources disagree, prefer the most recent and say so. If there is an earlier
+conversation, treat the new question as a follow-up to it."""
+
+DIGEST_SYSTEM = """You brief a busy consultant on what is new in their knowledge base. From the numbered documents
+that arrived or changed recently, write a short Markdown briefing: 3-6 headline bullets (decisions, commitments,
+numbers, risks, deadlines), then a short "Worth reading" list. Cite every point as [n]. No preamble."""
 
 DOC_SYSTEM = """You write polished business documents (briefs, memos, proposals, reports) in Markdown, grounded in the
 user's knowledge base. Use headings, short paragraphs, bullets and tables where they help. Cite sources inline as [n].
@@ -57,8 +63,10 @@ def format_context(hits: list[Hit], max_chars: int = 60000) -> tuple[str, list[d
     for h in hits:
         if h.doc_id not in numbers:
             numbers[h.doc_id] = len(numbers) + 1
-            sources.append({"n": numbers[h.doc_id], "doc_id": h.doc_id, "title": h.title, "uri": h.uri})
-        block = f"[{numbers[h.doc_id]}] {h.title}\n{h.text}"
+            sources.append({"n": numbers[h.doc_id], "doc_id": h.doc_id, "title": h.title, "uri": h.uri,
+                            "date": h.date})
+        when = f" ({datetime.fromtimestamp(h.date):%Y-%m-%d})" if h.date else ""
+        block = f"[{numbers[h.doc_id]}] {h.title}{when}\n{h.text}"
         if used + len(block) > max_chars:
             break
         blocks.append(block)
@@ -92,7 +100,9 @@ class Brain:
             body += "\n\ntags: " + ", ".join(tags)
         uri = "memory:" + hashlib.sha1(f"{title}\n{text}".encode()).hexdigest()[:16]
         item = Item(uri=uri, title=title, ext=".md", modified=time.time(), load=lambda: b"")
-        doc_id, outcome = index_item(self.store, "memory", item, text=body)
+        # Saved answers are the brain's own words: kept apart so they never pose as evidence for new answers.
+        source = "_answers" if "answer" in (tags or []) else "memory"
+        doc_id, outcome = index_item(self.store, source, item, text=body)
         self.store.commit()
         refresh_links(self.store, [doc_id])
         return {"doc_id": doc_id, "title": title, "status": outcome}
@@ -113,8 +123,9 @@ class Brain:
         return {"enriched": done, "errors": errors}
 
     # ---- retrieve --------------------------------------------------------
-    def search(self, query: str, limit: int = 8, source: str | None = None) -> list[Hit]:
-        return search(self.store, query, limit=limit, source=source)
+    def search(self, query: str, limit: int = 8, source: str | None = None, days: int | None = None) -> list[Hit]:
+        since = time.time() - days * 86400 if days else None
+        return search(self.store, query, limit=limit, source=source, since=since)
 
     def related(self, doc_id: int, limit: int = 15) -> list[dict[str, Any]]:
         return self.store.neighbours(doc_id, limit)
@@ -129,7 +140,9 @@ class Brain:
         return out
 
     def _context_hits(self, query: str, k: int) -> list[Hit]:
-        hits = self.search(query, limit=k)
+        # Answers and creations are grounded in original material; the brain's own earlier outputs are
+        # only used when nothing else matches (or when the user picks them as references).
+        hits = search(self.store, query, limit=k, include_generated=False) or self.search(query, limit=k)
         # Pull in the strongest neighbour of the top hits so connected knowledge comes along.
         seen = {h.doc_id for h in hits}
         for h in hits[:3]:
@@ -137,19 +150,25 @@ class Brain:
                 if n["doc_id"] not in seen:
                     seen.add(n["doc_id"])
                     doc = self.store.get(n["doc_id"])
-                    if doc:
+                    if doc and doc.source not in GENERATED_SOURCES:
                         hits.append(Hit(doc.id, 0, doc.title, doc.uri, doc.source,
-                                        doc.summary or doc.text[:1200], 0.0))
+                                        doc.summary or doc.text[:1200], 0.0, doc.doc_date))
         return hits
 
     # ---- create ----------------------------------------------------------
-    def ask(self, question: str, k: int = 8) -> dict[str, Any]:
-        hits = self._context_hits(question, k)
+    def ask(self, question: str, k: int = 8, history: list[dict[str, str]] | None = None) -> dict[str, Any]:
+        """Answer from the knowledge base. ``history`` = earlier turns [{"q": ..., "a": ...}] for follow-ups."""
+        history = [t for t in (history or []) if t.get("q")][-3:]
+        # Follow-ups ("and the risks?") are searched together with the previous question.
+        hits = self._context_hits(f"{question} {history[-1]['q']}" if history else question, k)
         context, sources = format_context(hits)
         if not hits:
             return {"answer": "Nothing in the brain matches that yet. Add sources or `remember` some notes.",
                     "sources": [], "mode": "empty"}
-        prompt = f"<sources>\n{context}\n</sources>\n\nQuestion: {question}"
+        convo = "".join(f"Q: {t['q']}\nA: {str(t.get('a', ''))[:1500]}\n\n" for t in history)
+        prompt = (f"<sources>\n{context}\n</sources>\n\n"
+                  + (f"<conversation>\n{convo.strip()}\n</conversation>\n\n" if convo else "")
+                  + f"Question: {question}")
         try:
             return {"answer": self.llm.text(ANSWER_SYSTEM, prompt, max_tokens=16000), "sources": sources,
                     "mode": "claude"}
@@ -158,6 +177,51 @@ class Brain:
                                    for s in sources)
             return {"answer": f"(Claude unavailable: {exc}. Most relevant passages:)\n\n{passages}",
                     "sources": sources, "mode": "extractive"}
+
+    def whats_new(self, days: int = 7, use_ai: bool = False, limit: int = 40) -> dict[str, Any]:
+        """What arrived or changed recently (excluding the brain's own creations), optionally briefed by Claude."""
+        docs = self.store.changed_since(time.time() - days * 86400, limit=200, exclude_sources=tuple(GENERATED_SOURCES))
+        by_source: dict[str, int] = {}
+        by_kind: dict[str, int] = {}
+        for d in docs:
+            by_source[d.source] = by_source.get(d.source, 0) + 1
+            by_kind[d.kind] = by_kind.get(d.kind, 0) + 1
+        out: dict[str, Any] = {
+            "days": days, "count": len(docs), "by_source": by_source, "by_kind": by_kind,
+            "docs": [{"id": d.id, "title": d.title, "kind": d.kind, "source": d.source, "date": d.doc_date,
+                      "indexed_at": d.indexed_at} for d in docs[:limit]],
+            "briefing": None, "sources": [], "mode": "list",
+        }
+        if use_ai and docs:
+            hits = [Hit(d.id, 0, d.title, d.uri, d.source, d.summary or d.text[:1500], 0.0, d.doc_date) for d in docs[:limit]]
+            context, sources = format_context(hits, max_chars=50000)
+            out["sources"] = sources
+            try:
+                out["briefing"] = self.llm.text(DIGEST_SYSTEM, f"<documents>\n{context}\n</documents>\n\n"
+                                                f"Brief me on the last {days} days.", max_tokens=8000)
+                out["mode"] = "claude"
+            except LLMUnavailable as exc:
+                out["mode"], out["error"] = "list", str(exc)
+        return out
+
+    # ---- collections ------------------------------------------------------
+    def collections(self) -> list[dict[str, Any]]:
+        return self.store.collections()
+
+    def save_collection(self, name: str, doc_ids: list[int]) -> dict[str, Any]:
+        name = name.strip()
+        if not name or len(name) > 80:
+            raise ValueError("collection name must be 1-80 characters")
+        ids = [int(i) for i in doc_ids if self.store.get(int(i))]
+        if not ids:
+            raise ValueError("a collection needs at least one existing document")
+        self.store.save_collection(name, ids)
+        return {"name": name, "doc_ids": ids}
+
+    def delete_collection(self, name: str) -> dict[str, Any]:
+        if not self.store.delete_collection(name):
+            raise ValueError(f"no collection named {name!r}")
+        return {"deleted": name}
 
     def _output_path(self, topic: str, ext: str) -> Path:
         return self.config.output_dir / f"{datetime.now():%Y-%m-%d}-{_slug(topic)}{ext}"
@@ -173,7 +237,7 @@ class Brain:
             chunks = self.store.doc_chunks(doc.id)
             ranked = sorted(chunks, key=lambda c: (-len(terms & set(tokenize(c[1]))), c[0]))[:per_doc]
             for ord_, text in sorted(ranked):
-                hits.append(Hit(doc.id, ord_, doc.title, doc.uri, doc.source, text, 0.0))
+                hits.append(Hit(doc.id, ord_, doc.title, doc.uri, doc.source, text, 0.0, doc.doc_date))
         return hits
 
     def _creation_context(self, topic: str, k: int, doc_ids: list[int] | None) -> tuple[list[Hit], str, list[dict]]:

@@ -126,12 +126,12 @@ documents that mention the same people and companies. Each click processes 20 do
 
 | Tab | What to do |
 |---|---|
-| 🏠 **Home** | Your overview: ask box, counts, quick actions, recently added documents and source health. Press **Ctrl/⌘+K** anywhere to find a document or jump to a page. |
-| 💬 **Ask** | Ask questions in plain English. Answers cite your documents: click a `[1]` to open the source. |
-| 🔎 **Search** | Keyword search, including text inside Word, PowerPoint and PDF files. |
+| 🏠 **Home** | Your overview: ask box, counts, quick actions, recently added documents and source health. **What's new** lists recent documents; press **✨ Brief me** for a written briefing. Press **Ctrl/⌘+K** anywhere to find a document or jump to a page. |
+| 💬 **Ask** | Ask questions in plain English. Answers cite your documents: click a `[1]` to open the source. Ask follow-ups (*"and the budget?"*); press **New conversation** to start fresh. |
+| 🔎 **Search** | Keyword search, including text inside Word, PowerPoint and PDF files. Filter by source or date (past week, month, year). Accents don't matter. |
 | 📚 **Library** | Everything indexed. Click a document to see its summary and connected documents, or open the original file. |
 | 🕸️ **Connections** | A visual map of how your knowledge links together. |
-| ✨ **Create** | Pick a template, type a topic, and choose your **reference documents** (search inside Create, or click **+ Use in Create** on search results, open documents or answers). Then press **✨ Generate with AI** (Claude writes it, with citations) or **📄 Build without AI** (a free draft assembled from those documents). Click **Download** when it's done. The brain also learns from what it creates. |
+| ✨ **Create** | Pick a template, type a topic, and choose your **reference documents** (search inside Create, or click **+ Use in Create** on search results, open documents or answers). Then press **✨ Generate with AI** (Claude writes it, with citations) or **📄 Build without AI** (a free draft assembled from those documents). Save the references as a **collection** (e.g. one per client) to reuse them later. Click **Download** when it's done. The brain also learns from what it creates. |
 | 📝 **Remember…** | Capture a fact, decision or meeting note. Write `[[Document Title]]` to link it to a document. |
 
 The brain **keeps learning while the app is open**: it re-checks your folders every minute and picks up

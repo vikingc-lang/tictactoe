@@ -163,6 +163,13 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
 .nav button .pill { margin-left: auto; }
 .btn:focus-visible, .chip:focus-visible, .nav button:focus-visible, .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 760px) { .grid2, .qa { grid-template-columns: 1fr; } .navtools { padding: 0; } .navtools #findBtn kbd { display: none; } }
+
+/* ---- v0.3: digest, collections, conversation, dates ---- */
+.brief { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; }
+.datepill { font-variant-numeric: tabular-nums; }
+.collbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.collbar select { width: auto; min-width: 200px; }
+.askhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -210,13 +217,22 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
           </div></div>
         <div class="card"><h3 style="margin-top:0">Recently added</h3><div id="homeRecent"></div></div>
       </div>
+      <div class="card" style="margin-top:16px" id="digestCard">
+        <div class="row" style="justify-content:space-between">
+          <h3 style="margin:0">What's new <select id="digestDays" aria-label="Period" style="width:auto;display:inline-block;padding:3px 8px;font-size:13px;margin-left:6px"><option value="1">today</option><option value="7" selected>last 7 days</option><option value="30">last 30 days</option></select></h3>
+          <button class="btn small primary" id="briefBtn">✨ Brief me</button>
+        </div>
+        <div class="small muted" id="digestSummary" style="margin-top:6px"></div>
+        <div id="digestList" style="margin-top:4px"></div>
+        <div id="digestBrief"></div>
+      </div>
       <div class="card" style="margin-top:16px"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Sources</h3><a href="#" data-goto="sources" class="small">Manage →</a></div><div id="homeSources" style="margin-top:6px"></div></div>
     </section>
 
     <!-- ASK -->
     <section class="view" id="view-ask">
-      <h1>Ask your brain</h1>
-      <p class="sub">Answers come from your own documents, with numbered citations you can open.</p>
+      <div class="askhead"><h1>Ask your brain</h1><button class="btn small" id="newChat" title="Start over: forget the earlier questions">＋ New conversation</button></div>
+      <p class="sub">Answers come from your own documents, with numbered citations you can open. Ask follow-up questions: the conversation is remembered until you start a new one.</p>
       <div id="welcome" class="card" style="display:none">
         <h3 style="margin-top:0">Welcome 👋 Let's connect your knowledge</h3>
         <div class="steps">
@@ -243,6 +259,7 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
       <div class="card row">
         <input type="text" id="searchBox" class="grow" placeholder="Search words or phrases…">
         <select id="searchSource" style="width:auto"><option value="">All sources</option></select>
+        <select id="searchDays" style="width:auto" aria-label="Date"><option value="">Any time</option><option value="7">Past week</option><option value="30">Past month</option><option value="90">Past 3 months</option><option value="365">Past year</option></select>
         <button class="btn primary" id="searchBtn">Search</button>
       </div>
       <div class="card" id="searchResults"><div class="empty">Type something to search.</div></div>
@@ -299,6 +316,11 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
           <button class="btn" id="refSuggest" title="Search using the topic above">Suggest from topic</button>
         </div>
         <div id="refResults" style="margin-top:6px"></div>
+        <div class="collbar">
+          <select id="colSelect" aria-label="Load a collection"><option value="">📁 Load a collection…</option></select>
+          <button class="btn small" id="colSave">💾 Save as collection</button>
+          <button class="btn small danger" id="colDelete" hidden>Delete collection</button>
+        </div>
         <div class="hint">Tip: you can also add documents with <b>+ Use in Create</b> from Search results, from any open document, or from an answer on the Ask page.</div>
       </div>
       <div class="card">
@@ -583,18 +605,26 @@ both but by can could did do does doing down during each few for from further ha
 it its itself just me more most my no nor not now of off on once only or other our ours out over own same she should so some such than that the
 their theirs them then there these they this those through to too under until up very was we were what when where which while who whom why
 will with would you your yours page slide notes one two three new use used using may might must shall etc via per`.split(/\s+/));
-const WORD_RE = /[A-Za-z][A-Za-z0-9-]{2,}/g;
+const WORD_RE = /\p{L}[\p{L}\p{N}-]{2,}/gu;          // 3+ chars, any language
+const QUERY_RE = /[\p{L}\p{N}][\p{L}\p{N}&+.-]*/gu;    // queries also keep short terms: AI, HR, Q3, M&A
+const fold = t => t.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase(); // Zürich -> zurich
 const WIKILINK_RE = /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g;
 const MDLINK_RE = /\[[^\]]*\]\(([^)\s]+)\)/g;
 
 function tokenize(text) {
   const out = [];
-  for (const m of text.matchAll(WORD_RE)) {
-    const w = m[0].toLowerCase().replace(/^-+|-+$/g, "");
+  for (const m of fold(text).matchAll(WORD_RE)) {
+    const w = m[0].replace(/^-+|-+$/g, "");
     if (w.length > 2 && !STOPWORDS.has(w)) out.push(w);
   }
   return out;
 }
+function queryTerms(q) {
+  return [...new Set([...fold(q).matchAll(QUERY_RE)].map(m => m[0].replace(/^[-.]+|[-.]+$/g, "")).filter(t => t && !STOPWORDS.has(t)))];
+}
+const docDate = d => d.date || (d.modified > 1e11 ? d.modified / 1000 : d.modified > 1e8 ? d.modified : d.indexedAt);
+const GENERATED = "Created by the brain", ANSWERS_SRC = "Saved answers";
+const isGenerated = d => d.source === GENERATED || d.source === ANSWERS_SRC;  // the brain's own words, never evidence
 function stem(w) {
   if (w.length > 5 && w.endsWith("ies")) return w.slice(0, -3) + "y";
   if (w.length > 6 && w.endsWith("ing")) return w.slice(0, -3);
@@ -835,7 +865,8 @@ function parseEmailBin(bin) {
   const lines = [`# ${subject}`, "", `From: ${decodeWords(top.from)}`, `To: ${decodeWords(top.to)}`, `Date: ${top.date || ""}`];
   if (attachments.length) lines.push("Attachments: " + attachments.map(a => a.filename).join(", "));
   const body = plain ?? (html ? htmlToText(html).text : "");
-  return { subject, text: lines.join("\n") + "\n\n" + body.trim(), attachments };
+  const sent = Date.parse(top.date || ""); // RFC 2822 dates parse in every browser
+  return { subject, text: lines.join("\n") + "\n\n" + body.trim(), attachments, date: Number.isFinite(sent) ? sent / 1000 : null };
 }
 function splitMbox(bin) { // "From " separator lines; ">From " escaping undone
   return bin.split(/(?:^|\r?\n)From [^\r\n]*\r?\n/).filter(m => m.trim()).map(m => m.replace(/^>(>*From )/gm, "$1"));
@@ -929,7 +960,12 @@ async function llmJSON(system, prompt, schema, maxTokens = 16000) {
 const ANSWER_SYSTEM = `You are the user's second brain: a research partner that answers from their own knowledge base.
 Ground every claim in the numbered sources provided and cite them inline like [1] or [2][4].
 If the sources don't contain the answer, say what is missing rather than guessing, then offer what you do know,
-clearly marked as general knowledge. Prefer crisp, structured answers a busy consultant can act on.`;
+clearly marked as general knowledge. Prefer crisp, structured answers a busy consultant can act on.
+Each source shows its date; when sources disagree, prefer the most recent and say so. If there is an earlier
+conversation, treat the new question as a follow-up to it.`;
+const DIGEST_SYSTEM = `You brief a busy consultant on what is new in their knowledge base. From the numbered documents
+that arrived or changed recently, write a short Markdown briefing: 3-6 headline bullets (decisions, commitments,
+numbers, risks, deadlines), then a short "Worth reading" list. Cite every point as [n]. No preamble.`;
 const DOC_SYSTEM = `You write polished business documents (briefs, memos, proposals, reports) in Markdown, grounded in the
 user's knowledge base. Use headings, short paragraphs, bullets and tables where they help. Cite sources inline as [n].
 End with a '## Sources' section listing each cited source as '[n] Title'. Output only the document.`;
@@ -1043,6 +1079,7 @@ const Brain = {
     for (const d of (await DB.allDocs()) || []) this.docs.set(d.id, d);
     this.links = (await DB.get("links")) || [];
     this.sources = (await DB.get("sources")) || [];
+    this.collections = (await DB.get("collections")) || [];
     this.nextId = (await DB.get("nextId")) || Math.max(0, ...this.docs.keys()) + 1;
     const handles = (await DB.get("handles")) || {};
     for (const [name, h] of Object.entries(handles)) this.handles.set(name, h);
@@ -1061,15 +1098,18 @@ const Brain = {
   // --- documents ---
   byUri(uri) { for (const d of this.docs.values()) if (d.uri === uri) return d; return null; },
   byTitle(title) { const t = title.trim().toLowerCase(); let best = null; for (const d of this.docs.values()) if (d.title.toLowerCase() === t && (!best || d.indexedAt > best.indexedAt)) best = d; return best; },
-  upsert({ source, uri, title, kind, modified, text }) {
-    text = text.trim(); const hash = hashText(text); const existing = this.byUri(uri);
-    if (existing && existing.hash === hash) { existing.modified = modified; existing.title = title; this.dirty.add(existing.id); return [existing.id, "unchanged"]; }
+  upsert({ source, uri, title, kind, modified, text, date = null }) {
+    text = text.trim();
+    if (!text) throw new Error("no readable text (empty file, or a scanned PDF that needs OCR)");
+    const hash = hashText(text), existing = this.byUri(uri);
+    date = date || (modified > 1e11 ? modified / 1000 : Date.now() / 1000);
+    if (existing && existing.hash === hash) { existing.modified = modified; existing.title = title; existing.date = date; this.dirty.add(existing.id); return [existing.id, "unchanged"]; }
     if (existing) {
       existing.revisions = [{ hash: existing.hash, indexedAt: existing.indexedAt, summary: existing.summary }, ...(existing.revisions || [])].slice(0, 20);
-      Object.assign(existing, { source, title, kind, hash, modified, text, indexedAt: Date.now() / 1000, summary: null, tf: termFrequencies(title + "\n" + text) });
+      Object.assign(existing, { source, title, kind, hash, modified, text, date, indexedAt: Date.now() / 1000, summary: null, tf: termFrequencies(title + "\n" + text) });
       this.dirty.add(existing.id); this.index = null; return [existing.id, "updated"];
     }
-    const doc = { id: this.nextId++, source, uri, title, kind, hash, modified, text, indexedAt: Date.now() / 1000, summary: null, tags: [], entities: [], revisions: [],
+    const doc = { id: this.nextId++, source, uri, title, kind, hash, modified, text, date, indexedAt: Date.now() / 1000, summary: null, tags: [], entities: [], revisions: [],
                   tf: termFrequencies(title + "\n" + text) };
     this.docs.set(doc.id, doc); this.dirty.add(doc.id); this.index = null; return [doc.id, "added"];
   },
@@ -1124,7 +1164,7 @@ const Brain = {
     const messages = ext === ".mbox" ? splitMbox(bin) : [bin];
     for (const [i, raw] of messages.entries()) {
       const email = parseEmailBin(raw), msgUri = ext === ".mbox" ? `${base}#msg${i}` : base;
-      const [msgId, outcome] = this.upsert({ source: sourceName, uri: msgUri, title: email.subject, kind: "email", modified: item.modified, text: email.text });
+      const [msgId, outcome] = this.upsert({ source: sourceName, uri: msgUri, title: email.subject, kind: "email", modified: item.modified, text: email.text, date: email.date });
       seen.add(msgUri); this.docs.get(msgId).relPath = item.relPath;
       if (ext === ".eml" && item.file) this.sessionFiles.set(msgId, item.file);
       stats[outcome]++; if (outcome !== "unchanged") changed.push(msgId);
@@ -1136,7 +1176,7 @@ const Brain = {
         try {
           const parsed = aext === ".eml" ? parseEmailBin(bytesToBin(att.data)) : await parseFile(att.data.buffer.slice(att.data.byteOffset, att.data.byteOffset + att.data.length), aext);
           const [attId, aout] = this.upsert({ source: sourceName, uri: attUri, title: (aext === ".eml" ? parsed.subject : parsed.title) || stemOf(att.filename),
-                                              kind: kindFor(aext), modified: item.modified, text: parsed.text });
+                                              kind: kindFor(aext), modified: item.modified, text: parsed.text, date: email.date });
           seen.add(attUri); attIds.push(attId); this.docs.get(attId).attachmentName = att.filename;
           await DB.set("att:" + attUri, new Blob([att.data]));
           stats[aout]++; if (aout !== "unchanged") changed.push(attId);
@@ -1299,6 +1339,7 @@ const Brain = {
       for (const text of chunkText(d.text)) {
         const tf = new Map();
         for (const t of tokenize(text).map(stem)) tf.set(t, (tf.get(t) || 0) + 1);
+        for (const m of fold(text).matchAll(/\b[\p{L}\p{N}][\p{L}\p{N}&+]?\b/gu)) if (!STOPWORDS.has(m[0])) tf.set(m[0], (tf.get(m[0]) || 0) + 1); // AI, HR, Q3
         for (const t of titleTerms) tf.set(t, (tf.get(t) || 0) + 3);
         let len = 0; for (const v of tf.values()) len += v;
         for (const t of tf.keys()) df.set(t, (df.get(t) || 0) + 1);
@@ -1307,39 +1348,48 @@ const Brain = {
     }
     this.index = { chunks, df, avgLen: total / (chunks.length || 1) };
   },
-  search(query, { limit = 8, perDoc = 2, source = null } = {}) {
+  search(query, { limit = 8, perDoc = 2, source = null, days = null, includeGenerated = true } = {}) {
     if (!this.index) this.buildIndex();
     const { chunks, df, avgLen } = this.index, N = chunks.length || 1;
-    const terms = [...new Set(tokenize(query).map(stem))]; if (!terms.length) return [];
+    const terms = [...new Set(queryTerms(query).map(t => t.length > 3 ? stem(t) : t))]; if (!terms.length) return [];
+    const since = days ? Date.now() / 1000 - days * 86400 : 0;
     const scored = [];
     for (const c of chunks) {
       let s = 0;
       for (const t of terms) { const f = c.tf.get(t); if (!f) continue; const idf = Math.log(1 + (N - df.get(t) + 0.5) / (df.get(t) + 0.5)); s += idf * f * 2.2 / (f + 1.2 * (0.25 + 0.75 * c.len / avgLen)); }
-      if (s > 0) { const d = this.docs.get(c.docId); if (!source || d.source === source) scored.push({ c, s }); }
+      if (s > 0) {
+        const d = this.docs.get(c.docId);
+        if ((!source || d.source === source) && (!since || docDate(d) >= since) && (includeGenerated || !isGenerated(d)))
+          scored.push({ c, s: isGenerated(d) ? s * 0.6 : s });
+      }
     }
     scored.sort((a, b) => b.s - a.s);
     const top = new Set(scored.slice(0, limit * 2).map(x => x.c.docId)), degree = new Map();
     for (const l of this.links) if (top.has(l.src) && top.has(l.dst)) degree.set(l.src, (degree.get(l.src) || 0) + 1);
     const hits = scored.slice(0, limit * 6).map(({ c, s }) => { const d = this.docs.get(c.docId);
-      return { doc_id: d.id, title: d.title, uri: d.uri, source: d.source, text: c.text, score: s * (1 + 0.15 * (degree.get(d.id) || 0)) }; });
+      return { doc_id: d.id, title: d.title, uri: d.uri, source: d.source, text: c.text, date: docDate(d), score: s * (1 + 0.15 * (degree.get(d.id) || 0)) }; });
     hits.sort((a, b) => b.score - a.score);
     const per = new Map(), out = [];
     for (const h of hits) { if ((per.get(h.doc_id) || 0) >= perDoc) continue; per.set(h.doc_id, (per.get(h.doc_id) || 0) + 1); out.push(h); if (out.length >= limit) break; }
     return out;
   },
+  // Answers and creations are grounded in original material; the brain's own outputs only when nothing else matches.
   contextHits(query, k) {
-    const hits = this.search(query, { limit: k }), seen = new Set(hits.map(h => h.doc_id));
+    let hits = this.search(query, { limit: k, includeGenerated: false });
+    if (!hits.length) hits = this.search(query, { limit: k });
+    const seen = new Set(hits.map(h => h.doc_id));
     for (const h of hits.slice(0, 3)) for (const n of this.neighbours(h.doc_id, 2)) if (!seen.has(n.doc_id)) {
-      seen.add(n.doc_id); const d = this.docs.get(n.doc_id);
-      hits.push({ doc_id: d.id, title: d.title, uri: d.uri, source: d.source, text: d.summary || d.text.slice(0, 1200), score: 0 });
+      seen.add(n.doc_id); const d = this.docs.get(n.doc_id); if (isGenerated(d)) continue;
+      hits.push({ doc_id: d.id, title: d.title, uri: d.uri, source: d.source, text: d.summary || d.text.slice(0, 1200), date: docDate(d), score: 0 });
     }
     return hits;
   },
   formatContext(hits, maxChars = 60000) {
     const numbers = new Map(), sources = [], blocks = []; let used = 0;
     for (const h of hits) {
-      if (!numbers.has(h.doc_id)) { numbers.set(h.doc_id, numbers.size + 1); sources.push({ n: numbers.get(h.doc_id), doc_id: h.doc_id, title: h.title, uri: h.uri }); }
-      const block = `[${numbers.get(h.doc_id)}] ${h.title}\n${h.text}`;
+      if (!numbers.has(h.doc_id)) { numbers.set(h.doc_id, numbers.size + 1); sources.push({ n: numbers.get(h.doc_id), doc_id: h.doc_id, title: h.title, uri: h.uri, date: h.date }); }
+      const when = h.date ? ` (${new Date(h.date * 1000).toISOString().slice(0, 10)})` : "";
+      const block = `[${numbers.get(h.doc_id)}] ${h.title}${when}\n${h.text}`;
       if (used + block.length > maxChars) break; blocks.push(block); used += block.length;
     }
     return { context: blocks.join("\n\n---\n\n"), sources };
@@ -1350,8 +1400,9 @@ const Brain = {
     title = title || text.trim().split("\n")[0].slice(0, 80);
     let body = `# ${title}\n\n${text.trim()}\n\n_captured ${new Date().toLocaleString()}_`;
     if (tags?.length) body += "\n\ntags: " + tags.join(", ");
-    if (!this.sources.some(s => s.name === "Notes")) this.sources.push({ name: "Notes", mode: "memory", addedAt: Date.now() / 1000 });
-    const [id, status] = this.upsert({ source: "Notes", uri: "memory:" + hashText(title + "\n" + text), title, kind: "note", modified: Date.now(), text: body });
+    const source = tags?.includes("answer") ? ANSWERS_SRC : "Notes";
+    if (!this.sources.some(s => s.name === source)) this.sources.push({ name: source, mode: "memory", addedAt: Date.now() / 1000 });
+    const [id, status] = this.upsert({ source, uri: "memory:" + hashText(title + "\n" + text), title, kind: "note", modified: Date.now(), text: body });
     this.relink([id]); await this.save();
     return { doc_id: id, title, status };
   },
@@ -1364,17 +1415,48 @@ const Brain = {
     this.relink([id]); await this.save();
     return id;
   },
-  async ask(question) {
-    const hits = this.contextHits(question, 8);
+  // history: earlier turns [{q, a}] so follow-up questions ("and the risks?") work
+  async ask(question, history = []) {
+    history = history.filter(t => t.q).slice(-3);
+    const hits = this.contextHits(history.length ? `${question} ${history.at(-1).q}` : question, 8);
     if (!hits.length) return { answer: "Nothing in the brain matches that yet. Add sources or `remember` some notes.", sources: [], mode: "empty" };
     const { context, sources } = this.formatContext(hits);
-    try { return { answer: await llmText(ANSWER_SYSTEM, `<sources>\n${context}\n</sources>\n\nQuestion: ${question}`), sources, mode: "claude" }; }
+    const convo = history.map(t => `Q: ${t.q}\nA: ${String(t.a || "").slice(0, 1500)}`).join("\n\n");
+    const prompt = `<sources>\n${context}\n</sources>\n\n` + (convo ? `<conversation>\n${convo}\n</conversation>\n\n` : "") + `Question: ${question}`;
+    try { return { answer: await llmText(ANSWER_SYSTEM, prompt), sources, mode: "claude" }; }
     catch (e) {
       if (!(e instanceof LLMUnavailable)) throw e;
       const passages = sources.map(s => `[${s.n}] ${s.title}\n` + hits.find(h => h.doc_id === s.doc_id).text.slice(0, 500)).join("\n\n");
       return { answer: passages, sources, mode: "extractive", reason: e.message };
     }
   },
+  // What arrived or changed recently (not the brain's own creations), optionally briefed by Claude.
+  async whatsNew(days = 7, useAi = false, limit = 40) {
+    const since = Date.now() / 1000 - days * 86400;
+    const docs = [...this.docs.values()].filter(d => d.indexedAt >= since && !isGenerated(d)).sort((a, b) => b.indexedAt - a.indexedAt);
+    const count = key => docs.reduce((m, d) => (m[d[key]] = (m[d[key]] || 0) + 1, m), {});
+    const out = { days, count: docs.length, by_source: count("source"), by_kind: count("kind"), mode: "list", briefing: null, sources: [],
+      docs: docs.slice(0, limit).map(d => ({ id: d.id, title: d.title, kind: d.kind, source: d.source, date: docDate(d), indexed_at: d.indexedAt })) };
+    if (useAi && docs.length) {
+      const { context, sources } = this.formatContext(docs.slice(0, limit).map(d => ({ doc_id: d.id, title: d.title, uri: d.uri, source: d.source, date: docDate(d), text: d.summary || d.text.slice(0, 1500) })), 50000);
+      out.sources = sources;
+      try { out.briefing = await llmText(DIGEST_SYSTEM, `<documents>\n${context}\n</documents>\n\nBrief me on the last ${days} days.`, 8000); out.mode = "claude"; }
+      catch (e) { if (!(e instanceof LLMUnavailable)) throw e; out.error = e.message; }
+    }
+    return out;
+  },
+  // Collections: named sets of reference documents (e.g. one per client).
+  collections: [],
+  listCollections() {
+    return this.collections.map(c => { const ids = c.doc_ids.filter(i => this.docs.has(i)); return { ...c, doc_ids: ids, titles: ids.map(i => this.docs.get(i).title) }; });
+  },
+  async saveCollection(name, docIds) {
+    name = String(name || "").trim(); if (!name || name.length > 80) throw new Error("Collection name must be 1-80 characters");
+    const ids = [...new Set(docIds.map(Number))].filter(i => this.docs.has(i)); if (!ids.length) throw new Error("A collection needs at least one document");
+    this.collections = this.collections.filter(c => c.name !== name).concat({ name, doc_ids: ids, updated: Date.now() / 1000 }).sort((a, b) => a.name.localeCompare(b.name));
+    await DB.set("collections", this.collections); return { name, doc_ids: ids };
+  },
+  async deleteCollection(name) { this.collections = this.collections.filter(c => c.name !== name); await DB.set("collections", this.collections); return { deleted: name }; },
   // Passages from documents the user picked, most relevant to the topic first, kept in reading order.
   referenceHits(docIds, topic, perDoc = 8) {
     const terms = new Set(tokenize(topic).map(stem)), hits = [];
@@ -1382,7 +1464,7 @@ const Brain = {
       const d = this.docs.get(id); if (!d) continue;
       const chunks = chunkText(d.text).map((text, ord) => ({ ord, text, score: new Set(tokenize(text).map(stem).filter(t => terms.has(t))).size }));
       const picked = [...chunks].sort((a, b) => b.score - a.score || a.ord - b.ord).slice(0, perDoc).sort((a, b) => a.ord - b.ord);
-      for (const c of picked) hits.push({ doc_id: d.id, title: d.title, uri: d.uri, source: d.source, text: c.text, score: 0 });
+      for (const c of picked) hits.push({ doc_id: d.id, title: d.title, uri: d.uri, source: d.source, text: c.text, date: docDate(d), score: 0 });
     }
     return hits;
   },
@@ -1456,7 +1538,7 @@ const Brain = {
   // --- backup ---
   exportJSON() {
     const docs = [...this.docs.values()].map(({ tf, ...d }) => d);
-    return JSON.stringify({ app: "second-brain", version: 1, exportedAt: new Date().toISOString(), sources: this.sources, links: this.links, nextId: this.nextId, docs });
+    return JSON.stringify({ app: "second-brain", version: 1, exportedAt: new Date().toISOString(), sources: this.sources, links: this.links, nextId: this.nextId, collections: this.collections, docs });
   },
   async importJSON(text) {
     const data = JSON.parse(text);
@@ -1465,11 +1547,12 @@ const Brain = {
     for (const d of data.docs) { d.tf = termFrequencies(d.title + "\n" + d.text); this.docs.set(d.id, d); }
     this.sources = data.sources.map(s => s.mode === "handle" ? { ...s, mode: "upload" } : s);
     this.links = data.links || []; this.nextId = data.nextId || this.docs.size + 1; this.index = null;
+    this.collections = data.collections || [];
     if (DB.persistent) await DB.clear();
-    this.docs.forEach((_, id) => this.dirty.add(id)); await this.save();
+    this.docs.forEach((_, id) => this.dirty.add(id)); await this.save(); await DB.set("collections", this.collections);
     return { documents: this.docs.size };
   },
-  async erase() { this.docs.clear(); this.links = []; this.sources = []; this.handles.clear(); this.sessionFiles.clear(); this.index = null; this.nextId = 1; if (DB.persistent) await DB.clear(); },
+  async erase() { this.docs.clear(); this.links = []; this.sources = []; this.collections = []; this.handles.clear(); this.sessionFiles.clear(); this.index = null; this.nextId = 1; if (DB.persistent) await DB.clear(); },
 
   status() {
     const stats = { documents: this.docs.size, links: this.links.length, enriched: [...this.docs.values()].filter(d => d.summary).length };
@@ -1557,7 +1640,7 @@ async function openDoc(id) {
   const related = Brain.neighbours(id, 10);
   const rel = related.length ? related.map(r => `<div class="rel" data-doc="${r.doc_id}"><span class="pill ${r.kind === "explicit" || r.kind === "attachment" ? "accent" : ""}">${r.kind === "explicit" ? "link" : r.kind === "attachment" ? "attachment" : r.kind === "related" ? "similar" : "shared"}</span><span class="t">${esc(r.title)}</span><span class="muted small">${esc(r.label || "")}</span></div>`).join("") : '<p class="muted small">No connections yet.</p>';
   $("#dBody").innerHTML = `
-    <div class="row small muted" style="margin-bottom:10px"><span class="pill">${esc(d.kind)}</span><span class="pill">${esc(d.source)}</span><span>indexed ${ago(d.indexedAt)}</span>${d.revisions?.length ? `<span>· ${d.revisions.length} earlier version(s)</span>` : ""}</div>
+    <div class="row small muted" style="margin-bottom:10px"><span class="pill">${esc(d.kind)}</span><span class="pill">${esc(d.source)}</span><span class="datepill">dated ${fmtDate(docDate(d))} ·</span><span>indexed ${ago(d.indexedAt)}</span>${d.revisions?.length ? `<span>· ${d.revisions.length} earlier version(s)</span>` : ""}</div>
     <div class="row" style="margin-bottom:14px"><button class="btn small" id="dOpen">Open original</button><button class="btn small" id="dAsk">Ask about this</button><button class="btn small" data-ref="${d.id}" data-ref-title="${esc(d.title)}">+ Use in Create</button></div>
     ${d.summary ? `<h4 style="margin:6px 0">Summary</h4><p>${esc(d.summary)}</p>` : ""}
     ${d.tags?.length ? `<div class="row" style="margin-bottom:10px">${d.tags.map(t => `<span class="pill accent">${esc(t)}</span>`).join("")}</div>` : ""}
@@ -1588,7 +1671,8 @@ async function ask() {
   chat.appendChild(bot); bot.scrollIntoView({ behavior: "smooth", block: "end" });
   $("#askBtn").disabled = true;
   try {
-    const r = await Brain.ask(q);
+    const r = await Brain.ask(q, CHAT.slice(-3));
+    if (r.mode === "claude") CHAT.push({ q, a: r.answer });
     const bySrc = Object.fromEntries(r.sources.map(s => [s.n, s]));
     bot.innerHTML = (r.mode === "extractive" ? `<p class="small" style="color:var(--warn)">${esc(r.reason)}. Here are the most relevant passages:</p>` : "")
       + `<div class="md">${md(r.answer)}</div>`
@@ -1607,12 +1691,12 @@ $("#askBtn").onclick = ask;
 function doSearch() {
   const q = $("#searchBox").value.trim(); if (!q) return;
   const box = $("#searchResults");
-  const hits = Brain.search(q, { limit: 25, source: $("#searchSource").value || null });
+  const hits = Brain.search(q, { limit: 25, source: $("#searchSource").value || null, days: +$("#searchDays").value || null });
   const words = q.toLowerCase().split(/\W+/).filter(w => w.length > 2).map(stem);
   const hl = s => { let h = esc(s); for (const w of words) h = h.replace(new RegExp(`\\b(${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\w*)`, "gi"), "<mark>$1</mark>"); return h; };
   box.innerHTML = hits.length ? hits.map(h => {
     const t = h.text.replace(/\s+/g, " "); const i = Math.max(0, t.toLowerCase().indexOf(words[0] || "") - 80);
-    return `<div class="result" data-doc="${h.doc_id}"><div class="rtitle">${esc(h.title)}</div><div class="snippet">${i ? "…" : ""}${hl(t.slice(i, i + 260))}…</div><div class="row small muted"><span>${esc(h.source)}</span><button class="btn small ref-add" data-ref="${h.doc_id}" data-ref-title="${esc(h.title)}">+ Use in Create</button></div></div>`;
+    return `<div class="result" data-doc="${h.doc_id}"><div class="rtitle">${esc(h.title)}</div><div class="snippet">${i ? "…" : ""}${hl(t.slice(i, i + 260))}…</div><div class="row small muted"><span>${esc(h.source)}</span>${h.date ? `<span class="datepill">· ${fmtDate(h.date)}</span>` : ""}<button class="btn small ref-add" data-ref="${h.doc_id}" data-ref-title="${esc(h.title)}">+ Use in Create</button></div></div>`;
   }).join("") : '<div class="empty">No matches. Try different words, or check the source is synced.</div>';
 }
 $("#searchBtn").onclick = doSearch;
@@ -1791,7 +1875,7 @@ function tick() {
 // Data adapter: the single-file app talks to the in-browser engine.
 const PREF = settings;
 const DATA = {
-  search: async (q, limit = 8) => Brain.search(q, { limit }),
+  search: async (q, limit = 8, days) => Brain.search(q, { limit, days }),
   recent: async n => [...Brain.docs.values()].sort((a, b) => b.indexedAt - a.indexedAt).slice(0, n).map(d => ({ id: d.id, title: d.title, kind: d.kind, at: d.indexedAt })),
   overview: async () => {
     const s = Brain.status(), byKind = {};
@@ -1802,6 +1886,10 @@ const DATA = {
   create: (type, b) => type === "deck" ? Brain.createDeck(b.topic, b.slides, b.instructions, { docIds: b.doc_ids, useAi: b.use_ai })
                                        : Brain.createDocument(b.topic, b.format, b.instructions, { docIds: b.doc_ids, useAi: b.use_ai }),
   remember: (text, title, tags) => Brain.remember(text, title, tags),
+  digest: (days, useAi) => Brain.whatsNew(days, useAi),
+  collections: async () => Brain.listCollections(),
+  saveCollection: (name, ids) => Brain.saveCollection(name, ids),
+  deleteCollection: name => Brain.deleteCollection(name),
   fileName: r => r.name,
   downloadUrl: r => r.download,
 };
@@ -1949,7 +2037,7 @@ async function copyText(text) {
 // ---- quick find (Ctrl/⌘+K)
 const PAL_PAGES = [["🏠 Home", "home"], ["💬 Ask", "ask"], ["🔎 Search", "search"], ["📚 Library", "library"], ["🕸️ Connections", "graph"], ["✨ Create", "create"], ["🔌 Sources & settings", "sources"]];
 let palItems = [], palSel = 0, palTimer = null, palToken = 0;
-function openPalette() { $("#palette").classList.add("open"); $("#palInput").value = ""; palRender(""); setTimeout(() => $("#palInput").focus(), 0); }
+function openPalette() { $("#palette").classList.add("open"); $("#palInput").value = ""; $("#palInput").focus(); palRender(""); }
 function closePalette() { $("#palette").classList.remove("open"); }
 async function palRender(q) {
   const token = ++palToken, items = [];
@@ -2007,6 +2095,63 @@ document.addEventListener("click", async e => {
   }
 }, true);
 renderRefs();
+
+
+// ===================== v0.3: follow-up conversation, dates, what's new, collections =====================
+const CHAT = [];  // earlier turns, sent with each question so follow-ups work
+const fmtDate = ts => ts ? new Date(ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+$("#newChat").onclick = () => { CHAT.length = 0; $("#chat").innerHTML = ""; $("#question").focus(); toast("New conversation"); };
+
+// ---- what's new (Home)
+async function renderDigest() {
+  const days = +$("#digestDays").value;
+  const d = await DATA.digest(days, false).catch(() => null); if (!d) return;
+  const kinds = Object.entries(d.by_kind).map(([k, n]) => `${n} ${(KIND_LABEL[k] || k).toLowerCase().replace(n === 1 ? /s$/ : /$^/, "")}`).join(", ");
+  $("#digestSummary").textContent = d.count ? `${d.count} new or changed${kinds ? ": " + kinds : ""}` : "Nothing new in this period.";
+  $("#digestList").innerHTML = d.docs.slice(0, 6).map(x => `<div class="list-item" data-doc="${x.id}"><span>${kindIcon(x.kind)}</span><span class="t grow">${esc(x.title)}</span><span class="small muted datepill" style="flex:none">${fmtDate(x.date)}</span></div>`).join("");
+  $("#briefBtn").disabled = !d.count;
+}
+$("#digestDays").onchange = () => { $("#digestBrief").innerHTML = ""; renderDigest(); };
+$("#briefBtn").onclick = async () => {
+  const b = $("#briefBtn"); b.disabled = true; $("#digestBrief").innerHTML = '<div class="brief"><span class="spinner"></span> Reading what\'s new…</div>';
+  try {
+    const d = await DATA.digest(+$("#digestDays").value, true);
+    if (!d.briefing) { $("#digestBrief").innerHTML = `<div class="brief small" style="color:var(--warn)">${esc(d.error || "Claude isn't connected")}. Add your key under Sources &amp; settings for a written briefing.</div>`; return; }
+    const bySrc = Object.fromEntries(d.sources.map(s => [s.n, s]));
+    $("#digestBrief").innerHTML = `<div class="brief md">${md(d.briefing)}</div>`;
+    $$("#digestBrief .cite").forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } });
+  } catch (e) { $("#digestBrief").innerHTML = `<div class="brief small" style="color:var(--bad)">${esc(e.message)}</div>`; }
+  finally { b.disabled = false; }
+};
+const homeBase = renderHome;
+renderHome = async () => { await homeBase(); renderDigest(); };
+
+// ---- collections (Create)
+let COLLS = [];
+async function loadCollections() {
+  COLLS = await DATA.collections().catch(() => []);
+  const cur = $("#colSelect").value;
+  $("#colSelect").innerHTML = '<option value="">📁 Load a collection…</option>' + COLLS.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${c.doc_ids.length})</option>`).join("");
+  $("#colSelect").value = COLLS.some(c => c.name === cur) ? cur : "";
+  $("#colDelete").hidden = !$("#colSelect").value;
+}
+$("#colSelect").onchange = () => {
+  const c = COLLS.find(x => x.name === $("#colSelect").value); $("#colDelete").hidden = !c; if (!c) return;
+  REFS.clear(); c.doc_ids.forEach((id, i) => REFS.set(+id, c.titles[i])); renderRefs(); toast(`Loaded “${c.name}”: ${REFS.size} references`);
+};
+$("#colSave").onclick = async () => {
+  if (!REFS.size) { toast("Pick some reference documents first"); return; }
+  const name = prompt("Name this collection (e.g. a client or project):", $("#colSelect").value || "");
+  if (!name || !name.trim()) return;
+  try { await DATA.saveCollection(name.trim(), [...REFS.keys()]); await loadCollections(); $("#colSelect").value = name.trim(); $("#colDelete").hidden = false; toast(`Saved collection “${name.trim()}”`); }
+  catch (e) { toast(e.message); }
+};
+$("#colDelete").onclick = async () => {
+  const name = $("#colSelect").value; if (!name || !confirm(`Delete collection “${name}”? The documents themselves are kept.`)) return;
+  await DATA.deleteCollection(name); await loadCollections(); toast("Collection deleted");
+};
+const createShowBase = show;
+show = view => { createShowBase(view); if (view === "create") loadCollections(); };
 
 // ---------- boot ----------
 (async () => {

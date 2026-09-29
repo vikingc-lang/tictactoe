@@ -90,9 +90,24 @@ def cmd_watch(args) -> None:
 
 
 def cmd_search(args) -> None:
-    for h in _brain(args).search(args.query, args.limit, args.source):
+    for h in _brain(args).search(args.query, args.limit, args.source, args.days):
         snippet = " ".join(h.text.split())[:220]
         print(f"#{h.doc_id:<5} {h.title}  ({h.source})\n       {snippet}\n")
+
+
+def cmd_digest(args) -> None:
+    from datetime import datetime
+
+    d = _brain(args).whats_new(args.days, use_ai=args.ai)
+    print(f"{d['count']} new or changed in the last {d['days']} days"
+          + (": " + ", ".join(f"{n} {k}" for k, n in d["by_kind"].items()) if d["by_kind"] else ""))
+    if d["briefing"]:
+        print("\n" + d["briefing"] + "\n")
+    elif d.get("error"):
+        print(f"(briefing unavailable: {d['error']})")
+    for doc in d["docs"]:
+        when = datetime.fromtimestamp(doc["date"]).strftime("%Y-%m-%d") if doc["date"] else ""
+        print(f"  #{doc['id']:<5} {when}  {doc['title']}  ({doc['source']})")
 
 
 def cmd_ask(args) -> None:
@@ -195,7 +210,13 @@ def build_parser() -> argparse.ArgumentParser:
     se.add_argument("query")
     se.add_argument("--limit", type=int, default=8)
     se.add_argument("--source")
+    se.add_argument("--days", type=int, help="only documents dated in the last N days")
     se.set_defaults(fn=cmd_search)
+
+    dg = sub.add_parser("digest", help="what's new in the last N days (optionally briefed by Claude)")
+    dg.add_argument("--days", type=int, default=7)
+    dg.add_argument("--ai", action="store_true", help="add a short cited briefing written by Claude")
+    dg.set_defaults(fn=cmd_digest)
 
     q = sub.add_parser("ask", help="ask a question, answered with citations")
     q.add_argument("question")

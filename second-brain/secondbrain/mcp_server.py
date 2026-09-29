@@ -27,9 +27,10 @@ def build_server(brain: Brain | None = None) -> MCPServer:
     mcp = MCPServer(name="second-brain", instructions=INSTRUCTIONS)
 
     @mcp.tool()
-    def search(query: str, limit: int = 8, source: str | None = None) -> list[dict[str, Any]]:
-        """Full-text search across every connected source. Returns matching passages with doc ids."""
-        return [h.to_dict() for h in brain.search(query, limit=limit, source=source)]
+    def search(query: str, limit: int = 8, source: str | None = None, days: int | None = None) -> list[dict[str, Any]]:
+        """Full-text search across every connected source. Returns matching passages with doc ids and dates.
+        days: only documents dated within the last N days."""
+        return [h.to_dict() for h in brain.search(query, limit=limit, source=source, days=days)]
 
     @mcp.tool()
     def get_document(doc_id: int, max_chars: int = 20000) -> dict[str, Any]:
@@ -49,6 +50,12 @@ def build_server(brain: Brain | None = None) -> MCPServer:
     def ask(question: str) -> dict[str, Any]:
         """Answer a question from the knowledge base with numbered citations."""
         return brain.ask(question)
+
+    @mcp.tool()
+    def whats_new(days: int = 7, brief: bool = False) -> dict[str, Any]:
+        """What arrived or changed in the brain in the last N days (emails, documents, notes).
+        brief=true also returns a short cited briefing written by Claude."""
+        return brain.whats_new(days, use_ai=brief)
 
     @mcp.tool()
     def remember(text: str, title: str | None = None, tags: list[str] | None = None) -> dict[str, Any]:

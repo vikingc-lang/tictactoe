@@ -69,6 +69,12 @@ CREATE TABLE IF NOT EXISTS links (
 );
 CREATE INDEX IF NOT EXISTS idx_links_dst ON links(dst);
 
+CREATE TABLE IF NOT EXISTS collections (
+    name    TEXT PRIMARY KEY,
+    doc_ids TEXT NOT NULL DEFAULT '[]',
+    updated REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sources (
     name      TEXT PRIMARY KEY,
     type      TEXT NOT NULL,
@@ -91,12 +97,13 @@ class Document:
     tags: list[str]
     entities: list[str]
     text: str
+    doc_date: float | None = None
 
     def to_dict(self, include_text: bool = False) -> dict[str, Any]:
         d = {
             "id": self.id, "source": self.source, "uri": self.uri, "title": self.title,
             "kind": self.kind, "modified": self.modified, "indexed_at": self.indexed_at,
-            "summary": self.summary, "tags": self.tags, "entities": self.entities,
+            "summary": self.summary, "tags": self.tags, "entities": self.entities, "date": self.doc_date,
         }
         if include_text:
             d["text"] = self.text
@@ -108,6 +115,7 @@ def _row_to_doc(row: sqlite3.Row) -> Document:
         id=row["id"], source=row["source"], uri=row["uri"], title=row["title"], kind=row["kind"],
         modified=row["modified"], indexed_at=row["indexed_at"], summary=row["summary"],
         tags=json.loads(row["tags"] or "[]"), entities=json.loads(row["entities"] or "[]"),
+        doc_date=row["doc_date"] if "doc_date" in row.keys() else None,
         text=row["text"],
     )
 
@@ -119,6 +127,14 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        cols = {r["name"] for r in self.db.execute("PRAGMA table_info(documents)")}
+        if "doc_date" not in cols:  # added in v0.3: when the document was written/sent
+            self.db.execute("ALTER TABLE documents ADD COLUMN doc_date REAL")
+            self.db.execute("UPDATE documents SET doc_date = CASE WHEN modified > 1e8 THEN modified ELSE indexed_at END")
+            self.db.commit()
 
     def close(self) -> None:
         self.db.close()
@@ -154,20 +170,21 @@ class Store:
         return [_row_to_doc(r) for r in self.db.execute(sql, args)]
 
     def upsert_document(self, *, source: str, uri: str, title: str, kind: str, content_hash: str,
-                        modified: float | None, text: str) -> tuple[int, bool]:
+                        modified: float | None, text: str, doc_date: float | None = None) -> tuple[int, bool]:
         """Insert or update a document. Returns (doc_id, content_changed)."""
         now = time.time()
         existing = self.db.execute("SELECT * FROM documents WHERE uri = ?", (uri,)).fetchone()
         if existing is None:
             cur = self.db.execute(
-                "INSERT INTO documents (source, uri, title, kind, content_hash, modified, indexed_at, text) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (source, uri, title, kind, content_hash, modified, now, text),
+                "INSERT INTO documents (source, uri, title, kind, content_hash, modified, indexed_at, text, doc_date) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (source, uri, title, kind, content_hash, modified, now, text, doc_date or now),
             )
             return int(cur.lastrowid), True
         doc_id = existing["id"]
         if existing["content_hash"] == content_hash and not existing["deleted"]:
-            self.db.execute("UPDATE documents SET modified = ?, title = ? WHERE id = ?", (modified, title, doc_id))
+            self.db.execute("UPDATE documents SET modified = ?, title = ?, doc_date = COALESCE(?, doc_date) WHERE id = ?",
+                            (modified, title, doc_date, doc_id))
             return doc_id, False
         # Content changed: keep the previous version as a revision so history is never lost.
         self.db.execute(
@@ -176,8 +193,8 @@ class Store:
         )
         self.db.execute(
             "UPDATE documents SET source = ?, title = ?, kind = ?, content_hash = ?, modified = ?, indexed_at = ?, "
-            "text = ?, summary = NULL, deleted = 0 WHERE id = ?",
-            (source, title, kind, content_hash, modified, now, text, doc_id),
+            "text = ?, summary = NULL, deleted = 0, doc_date = ? WHERE id = ?",
+            (source, title, kind, content_hash, modified, now, text, doc_date or now, doc_id),
         )
         return doc_id, True
 
@@ -196,6 +213,32 @@ class Store:
     def uris_for_source(self, source: str) -> dict[str, int]:
         rows = self.db.execute("SELECT uri, id FROM documents WHERE source = ? AND deleted = 0", (source,))
         return {r["uri"]: r["id"] for r in rows}
+
+    def changed_since(self, since: float, limit: int = 200, exclude_sources: tuple[str, ...] = ()) -> list[Document]:
+        marks = ",".join("?" * len(exclude_sources)) or "''"
+        rows = self.db.execute(
+            f"SELECT * FROM documents WHERE deleted = 0 AND indexed_at >= ? AND source NOT IN ({marks}) "
+            "ORDER BY indexed_at DESC LIMIT ?", (since, *exclude_sources, limit))
+        return [_row_to_doc(r) for r in rows]
+
+    # ---- collections (named sets of reference documents) --------------------
+    def collections(self) -> list[dict[str, Any]]:
+        out = []
+        for r in self.db.execute("SELECT * FROM collections ORDER BY name COLLATE NOCASE"):
+            ids = [i for i in json.loads(r["doc_ids"]) if self.get(i)]
+            out.append({"name": r["name"], "doc_ids": ids, "titles": [self.get(i).title for i in ids], "updated": r["updated"]})
+        return out
+
+    def save_collection(self, name: str, doc_ids: list[int]) -> None:
+        self.db.execute("INSERT INTO collections (name, doc_ids, updated) VALUES (?, ?, ?) "
+                        "ON CONFLICT(name) DO UPDATE SET doc_ids = excluded.doc_ids, updated = excluded.updated",
+                        (name, json.dumps([int(i) for i in dict.fromkeys(doc_ids)]), time.time()))
+        self.db.commit()
+
+    def delete_collection(self, name: str) -> bool:
+        cur = self.db.execute("DELETE FROM collections WHERE name = ?", (name,))
+        self.db.commit()
+        return cur.rowcount > 0
 
     def doc_chunks(self, doc_id: int) -> list[tuple[int, str]]:
         return [(r["ord"], r["text"]) for r in self.db.execute(

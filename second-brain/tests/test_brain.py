@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import email.utils
 import json
 import threading
 import time
@@ -564,5 +565,166 @@ def test_create_api_accepts_references_and_no_ai(workspace, monkeypatch):
         assert _call(base, r["download"] + "?download=1", raw=True)[:2] == b"PK"
         with pytest.raises(urllib.error.HTTPError):                       # unknown ids -> clear error
             _call(base, "/create/document", {"topic": "x", "doc_ids": [99999], "use_ai": False})
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------- v0.3: search quality, dates, follow-ups, digest, collections
+def test_search_handles_accents_and_short_terms(workspace):
+    cfg, notes = workspace
+    (notes / "roadmap.md").write_text("# Q3 AI roadmap\n\nThe AI programme for HR and M&A starts in Q3 in Zürich.\n", encoding="utf-8")
+    brain = Brain(cfg, llm=OfflineLLM())
+    brain.sync()
+    for q in ["Zürich", "zurich", "AI strategy", "HR", "Q3", "M&A"]:
+        assert brain.search(q)[0].title == "Q3 AI roadmap", q
+
+
+def test_empty_files_are_reported_not_indexed(workspace):
+    cfg, notes = workspace
+    (notes / "blank.md").write_text("   \n", encoding="utf-8")
+    stats = Brain(cfg, llm=OfflineLLM()).sync()[0]
+    assert stats.added == 5 and any("no readable text" in e for e in stats.errors)
+
+
+def test_generated_documents_rank_below_originals(workspace):
+    cfg, _ = workspace
+    brain = Brain(cfg, llm=OfflineLLM())
+    brain.sync()
+    brain.create_document("Warehouse automation memo", use_ai=False,
+                          doc_ids=[brain.store.find_by_title("Supply Chain Assessment").id])
+    stats = {s.source: s for s in brain.sync()}
+    assert stats["_outputs"].added == 1
+    memo = brain.store.find_by_title("Warehouse automation memo")
+    assert memo.id in {h.doc_id for h in brain.search("warehouse automation")}      # still findable in Search
+    context = brain._context_hits("warehouse automation", 8)
+    assert context and memo.id not in {h.doc_id for h in context}                 # but not cited in answers
+    only_memo = brain._context_hits("Warehouse automation memo", 8)
+    assert only_memo
+
+
+def test_saved_answers_are_not_used_as_evidence(workspace):
+    cfg, _ = workspace
+    brain = Brain(cfg, llm=OfflineLLM())
+    brain.sync()
+    saved = brain.remember("Question: warehouse automation?\n\nWarehouse automation in Lyon [1].",
+                           "Answer: warehouse automation", ["answer"])
+    note = brain.remember("Warehouse automation vendor shortlist agreed with the COO.", "Vendor shortlist")
+    assert brain.store.get(saved["doc_id"]).source == "_answers"
+    assert brain.store.get(note["doc_id"]).source == "memory"
+    assert saved["doc_id"] in {h.doc_id for h in brain.search("warehouse automation")}   # findable
+    context = {h.doc_id for h in brain._context_hits("warehouse automation", 8)}
+    assert note["doc_id"] in context and saved["doc_id"] not in context               # own notes count, own answers don't
+    assert saved["doc_id"] not in {d["id"] for d in brain.whats_new(7)["docs"]}
+
+
+def test_documents_carry_dates_used_for_filters_and_prompts(tmp_path):
+    import os
+    mail = tmp_path / "mail"
+    mail.mkdir()
+    (mail / "old.eml").write_bytes(_make_email("Old pricing note", "Pricing corridors v1.", date="Mon, 06 Jan 2025 09:00:00 +0000"))
+    (mail / "new.eml").write_bytes(_make_email("New pricing note", "Pricing corridors v2.",
+                                               date=email.utils.formatdate(time.time() - 86400)))
+    old_file = mail / "legacy.md"
+    old_file.write_text("# Legacy pricing\n\nPricing corridors v0.", encoding="utf-8")
+    os.utime(old_file, (time.time() - 400 * 86400,) * 2)
+    cfg = BrainConfig(data_dir=tmp_path / "data", output_dir=tmp_path / "out",
+                      sources=[SourceConfig("mail", "folder", {"path": str(mail)})])
+    cfg.data_dir.mkdir()
+    cfg.output_dir.mkdir()
+    llm = FakeLLM()
+    brain = Brain(cfg, llm=llm)
+    brain.sync()
+    old = brain.store.find_by_title("Old pricing note")
+    assert time.strftime("%Y-%m-%d", time.gmtime(old.doc_date)) == "2025-01-06"   # the email's sent date
+    assert {h.title for h in brain.search("pricing corridors", days=30)} == {"New pricing note"}
+    assert len({h.doc_id for h in brain.search("pricing corridors")}) == 3
+    brain.ask("What are the latest pricing corridors?")
+    assert "Old pricing note (2025-01-06)" in llm.prompts[-1]                  # Claude sees the dates
+
+
+def test_store_migrates_databases_without_dates(tmp_path):
+    import sqlite3
+    db = tmp_path / "brain.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE documents (id INTEGER PRIMARY KEY, source TEXT NOT NULL, uri TEXT NOT NULL UNIQUE, "
+                "title TEXT NOT NULL, kind TEXT NOT NULL, content_hash TEXT NOT NULL, modified REAL, indexed_at REAL NOT NULL, "
+                "summary TEXT, tags TEXT DEFAULT '[]', entities TEXT DEFAULT '[]', text TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)")
+    con.execute("INSERT INTO documents (source, uri, title, kind, content_hash, modified, indexed_at, text) "
+                "VALUES ('s', 'u', 'T', 'note', 'h', 1700000000, 1790000000, 'x')")
+    con.commit()
+    con.close()
+    from secondbrain.store import Store
+    store = Store(db)
+    assert store.get(1).doc_date == 1700000000
+
+
+def test_follow_up_questions_use_the_conversation(workspace):
+    cfg, _ = workspace
+    llm = FakeLLM()
+    brain = Brain(cfg, llm=llm)
+    brain.sync()
+    first = brain.ask("What is in the supply chain assessment?")
+    brain.ask("And what does it recommend?", history=[{"q": "What is in the supply chain assessment?", "a": first["answer"]}])
+    prompt = llm.prompts[-1]
+    assert "<conversation>" in prompt and "Q: What is in the supply chain assessment?" in prompt
+    assert "Supply Chain Assessment" in prompt                                # retrieval followed the thread
+
+
+def test_whats_new_digest(workspace):
+    cfg, _ = workspace
+    llm = FakeLLM()
+    brain = Brain(cfg, llm=llm)
+    brain.sync()
+    brain.create_document("pricing output", use_ai=False)
+    brain.sync()
+    d = brain.whats_new(7)
+    assert d["count"] == 5 and d["mode"] == "list" and d["by_kind"]["note"] == 3   # outputs excluded
+    b = brain.whats_new(7, use_ai=True)
+    assert b["mode"] == "claude" and b["briefing"] and b["sources"]
+    assert "Brief me on the last 7 days" in llm.prompts[-1]
+    assert Brain(cfg, llm=OfflineLLM()).whats_new(7, use_ai=True)["mode"] == "list"
+
+
+def test_collections_api(workspace, monkeypatch):
+    cfg, _ = workspace
+    monkeypatch.delenv("BRAIN_API_TOKEN", raising=False)
+    brain = Brain(cfg, llm=OfflineLLM())
+    brain.sync()
+    ids = [brain.store.find_by_title(t).id for t in ("Acme Corp", "Pricing Playbook")]
+    server, base = _serve(brain)
+    try:
+        _call(base, "/collections", {"name": "Acme", "doc_ids": ids + [99999]})
+        cols = _call(base, "/collections")
+        assert cols == [{"name": "Acme", "doc_ids": ids, "titles": ["Acme Corp", "Pricing Playbook"], "updated": cols[0]["updated"]}]
+        with pytest.raises(urllib.error.HTTPError):
+            _call(base, "/collections", {"name": "Empty", "doc_ids": [99999]})
+        _call(base, "/collections/remove", {"name": "Acme"})
+        assert _call(base, "/collections") == []
+        assert _call(base, "/digest?days=7")["count"] == 5
+    finally:
+        server.shutdown()
+
+
+def test_app_stays_responsive_while_claude_works(workspace, monkeypatch):
+    cfg, _ = workspace
+    monkeypatch.delenv("BRAIN_API_TOKEN", raising=False)
+
+    class SlowLLM(FakeLLM):
+        def text(self, *a, **k):
+            time.sleep(1.5)
+            return "done [1]"
+
+    brain = Brain(cfg, llm=SlowLLM())
+    brain.sync()
+    server, base = _serve(brain)
+    try:
+        t = threading.Thread(target=lambda: _call(base, "/ask", {"question": "warehouse automation?"}))
+        t.start()
+        time.sleep(0.3)
+        start = time.time()
+        assert _call(base, "/status")["stats"]["documents"] == 5
+        assert _call(base, "/search?q=pricing")
+        assert time.time() - start < 1.0                                       # not blocked by the Claude call
+        t.join()
     finally:
         server.shutdown()

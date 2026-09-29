@@ -35,6 +35,9 @@ OPTION B - Full app (always-on syncing, live mailbox, Claude Desktop)
      - Paste your Claude API key under "Claude connection"
      - Home / Ask / Search / Library / Connections / Create / Remember
      - Ctrl+K (Cmd+K on Mac) finds anything from any page
+     - Home -> What's new -> Brief me: a briefing on what arrived this week
+     - Ask follow-up questions; "New conversation" starts fresh
+     - Create: save reference documents as a collection per client/project
 
 Next time: just double-click the same Start file again.
 
