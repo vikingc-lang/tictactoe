@@ -11,6 +11,7 @@ if not exist ".venv\Scripts\python.exe" (
   %PY% -m venv .venv || goto :fail
   ".venv\Scripts\python.exe" -m pip install --quiet --upgrade pip
   ".venv\Scripts\python.exe" -m pip install --quiet -e ".[excel]" || goto :fail
+  ".venv\Scripts\python.exe" -m pip install --quiet extract-msg >nul 2>nul || echo ^(Optional Outlook .msg support could not be installed - everything else works.^)
 )
 echo Starting Second Brain. Your browser will open at http://localhost:8787
 echo Keep this window open while you use it; close it to stop.

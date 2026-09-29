@@ -1,0 +1,59 @@
+SECOND BRAIN - START HERE
+=========================
+
+Two ways to use it. Both run on your laptop; your files stay where they are.
+
+
+OPTION A - Instant (no install)
+-------------------------------
+Double-click  second-brain.html  (Chrome or Edge recommended).
+
+  - Sources & settings -> Add a folder (Documents, OneDrive, Dropbox...)
+  - Drop in emails: .eml files or a .mbox archive (Gmail: takeout.google.com -> Mail)
+  - Paste your Claude API key (console.anthropic.com) for written answers, documents and decks
+  - Your brain is saved in that browser. Use "Export backup" to keep a copy.
+
+
+OPTION B - Full app (always-on syncing, live mailbox, Claude Desktop)
+--------------------------------------------------------------------
+1. Install Python 3.11 or newer (one time) from  https://www.python.org/downloads/
+     Windows: tick "Add python.exe to PATH" in the installer.
+     Mac: use the python.org installer (the built-in Python is too old).
+
+2. Start it:
+     Windows: double-click  "Start Second Brain.bat"
+              (if Windows warns you: More info -> Run anyway)
+     Mac:     right-click  "Start Second Brain.command"  -> Open -> Open  (first time only)
+
+   The first start installs everything (about a minute, needs internet).
+   Your browser then opens at  http://localhost:8787
+   Keep the small black window open while you use it. Close it to stop.
+
+3. In the app:
+     - Sources & settings -> Add a source -> Folder, or Email mailbox
+       (Gmail/iCloud/Yahoo: use an APP password, e.g. myaccount.google.com/apppasswords)
+     - Paste your Claude API key under "Claude connection"
+     - Home / Ask / Search / Library / Connections / Create / Remember
+     - Ctrl+K (Cmd+K on Mac) finds anything from any page
+
+Next time: just double-click the same Start file again.
+
+
+WHERE THINGS LIVE
+-----------------
+  Your brain (index, links, notes):   <your home folder>/.secondbrain/brain.db
+  Settings:                           <your home folder>/.secondbrain/brain.toml
+  Claude key / mail passwords:        <your home folder>/.secondbrain/secrets.env
+  Created documents and decks:        <your home folder>/.secondbrain/outputs
+  Start over: close the app and delete the .secondbrain folder (your own files are never touched).
+
+
+TROUBLESHOOTING
+---------------
+  "Python 3.11 or newer is required"  -> install Python (step 1), restart the computer, try again.
+  Browser did not open                -> go to http://localhost:8787 yourself.
+  Setup failed                        -> delete the ".venv" folder inside this folder and start again.
+  Mac says it can't open the file     -> open Terminal in this folder and run:
+                                          chmod +x "Start Second Brain.command"
+
+More detail: GETTING_STARTED.md and README.md in this folder.

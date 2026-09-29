@@ -20,6 +20,7 @@ if [ ! -x .venv/bin/python ]; then
   "$PY" -m venv .venv
   .venv/bin/python -m pip install --quiet --upgrade pip
   .venv/bin/python -m pip install --quiet -e ".[excel]"
+  .venv/bin/python -m pip install --quiet extract-msg >/dev/null 2>&1 || echo "(Optional Outlook .msg support could not be installed - everything else works.)"
 fi
 
 echo "Starting Second Brain. Your browser will open at http://localhost:8787"
