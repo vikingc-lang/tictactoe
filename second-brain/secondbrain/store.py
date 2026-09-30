@@ -126,6 +126,9 @@ class Store:
         self.db = sqlite3.connect(self.path, check_same_thread=False, timeout=60)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA synchronous=NORMAL")   # safe with WAL; far fewer disk flushes while syncing
+        self.db.execute("PRAGMA cache_size=-65536")    # ~64 MB page cache
+        self.db.execute("PRAGMA temp_store=MEMORY")
         self.db.executescript(SCHEMA)
         self._migrate()
 

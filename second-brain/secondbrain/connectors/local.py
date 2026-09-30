@@ -17,7 +17,26 @@ from ..parsers import EMAIL_EXTS, SUPPORTED_EXTS
 from . import Item
 from .email_items import cached_items, email_to_items
 
-DEFAULT_EXCLUDE = [".git", "node_modules", "__pycache__", ".venv", ".obsidian", ".trash", "~$*", ".DS_Store"]
+DEFAULT_EXCLUDE = [".git", "node_modules", "__pycache__", ".venv", "venv", ".obsidian", ".trash", "~$*", ".DS_Store",
+                   ".idea", ".vscode", "site-packages", "$RECYCLE.BIN", "System Volume Information",
+                   "Thumbs.db", "desktop.ini", "*.tmp", "*.crdownload", "*.part", ".~lock.*"]
+
+# Windows "cloud-only" placeholder (OneDrive Files On-Demand etc.): reading it makes the cloud client download it.
+_CLOUD_ONLY = 0x400000 | 0x40000 | 0x1000  # RECALL_ON_DATA_ACCESS | RECALL_ON_OPEN | OFFLINE
+
+
+def _reader(path: Path, cloud_only: bool):
+    """Return a loader for ``path``; cloud-only files get a clear error instead of a raw OS error."""
+    if not cloud_only:
+        return path.read_bytes
+
+    def load() -> bytes:
+        try:
+            return path.read_bytes()
+        except OSError as exc:
+            raise OSError("cloud-only file could not be downloaded (make sure OneDrive/Drive is running and "
+                          "signed in, or set the folder to 'Always keep on this device')") from exc
+    return load
 
 
 class FolderConnector:
@@ -57,8 +76,9 @@ class FolderConnector:
                     continue
                 if st.st_size > self.max_bytes:
                     continue
+                cloud_only = bool(getattr(st, "st_file_attributes", 0) & _CLOUD_ONLY)
                 yield Item(uri=path.as_uri(), title=path.stem, ext=ext, modified=st.st_mtime,
-                           load=path.read_bytes)
+                           load=_reader(path, cloud_only))
 
     def _email_items(self, path: Path, ext: str, mtime: float, size: int) -> Iterator[Item]:
         """Saved emails (.eml, Outlook .msg) and mail archives (.mbox): one item per message plus

@@ -661,6 +661,21 @@ $("#srcBrowse").onclick = async () => {
   b.disabled = false; b.textContent = "📁 Browse…";
 };
 
+// Group identical problems ("cloud-only file…", "Invalid argument"…) and let people expand the full list.
+function errorSummary(errs) {
+  const reason = e => { const s = String(e), i = s.lastIndexOf(": "); return (i >= 0 ? s.slice(i + 2) : s).replace(/^\[Errno \d+\]\s*/, "").slice(0, 110); };
+  const pretty = e => { let s = String(e).replace(/^file:\/\/\//, ""); try { s = decodeURIComponent(s); } catch (_) {} return s; };
+  const groups = {};
+  errs.forEach(e => { const r = /cloud-only/.test(e) ? "Cloud-only files couldn't be downloaded. Make sure OneDrive/Drive is running, or set the folder to “Always keep on this device”."
+    : /password|encrypt/i.test(e) ? "Password-protected files were skipped."
+    : /No such file|not found/i.test(e) ? "Something wasn't found. Check the folder or file still exists."
+    : reason(e); groups[r] = (groups[r] || 0) + 1; });
+  const top = Object.entries(groups).sort((a, b) => b[1] - a[1]);
+  const rows = top.slice(0, 3).map(([r, n]) => `<div>${n > 1 ? n + " × " : ""}${esc(r)}</div>`).join("");
+  const all = errs.slice(0, 200).map(e => `<div class="small muted" style="word-break:break-all">${esc(pretty(e))}</div>`).join("");
+  return `<div style="color:var(--warn);margin-top:4px">⚠ ${errs.length} file${errs.length > 1 ? "s" : ""} couldn't be read${rows}</div>
+    <details style="margin-top:4px"><summary class="small muted" style="cursor:pointer">Show all</summary>${all}</details>`;
+}
 function renderSources() {
   if (!STATUS) return;
   const byName = Object.fromEntries(STATUS.sources.map(s => [s.name, s]));
@@ -669,7 +684,7 @@ function renderSources() {
     const where = c.path || (c.urls || []).join(", ") || c.url || c.folder_id || (c.username ? `${c.username} · ${(c.folders || []).join(", ")} · last ${c.since_days || 365} days` : "");
     const builtIn = c.name === "_outputs";
     return `<tr><td><b>${esc(builtIn ? "Created by the brain" : c.name)}</b><div class="small muted">${esc(c.type)}</div></td>
-      <td class="small" style="word-break:break-all">${esc(where)}${errs.length ? `<div style="color:var(--warn)">⚠ ${errs.length} issue(s): ${esc(errs[0]).slice(0, 160)}</div>` : ""}</td>
+      <td class="small" style="word-break:break-all">${esc(where)}${errs.length ? errorSummary(errs) : ""}</td>
       <td>${s.documents ?? 0}</td><td class="small muted">${ago(s.last_sync)}</td>
       <td style="white-space:nowrap"><button class="btn small" data-sync="${esc(c.name)}">Sync</button>${builtIn ? "" : ` <button class="btn small danger" data-remove="${esc(c.name)}">Remove</button>`}</td></tr>`;
   }).join("") || '<tr><td colspan="5"><div class="empty">No sources yet. Add your first folder below.</div></td></tr>';
