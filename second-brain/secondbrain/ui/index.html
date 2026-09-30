@@ -211,6 +211,7 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
       <div class="card row" style="padding:10px">
         <input type="text" id="homeAsk" class="grow" placeholder="Ask anything about your work… e.g. What did we agree with Acme on pricing?" aria-label="Ask a question">
         <button class="btn primary" id="homeAskBtn">Ask</button>
+        <button class="btn" id="surpriseBtn" title="Open a random document from your library and see what it connects to">🎲 Surprise me</button>
       </div>
       <div class="tiles" id="tiles"></div>
       <div class="grid2">
@@ -244,7 +245,7 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
       <div id="welcome" class="card" style="display:none">
         <h3 style="margin-top:0">Welcome 👋 Let's connect your knowledge</h3>
         <div class="steps">
-          <div class="step"><b>1 · Add folders</b>Point at Documents, OneDrive, Dropbox, Google Drive or any folder.<br><a href="#" data-goto="sources">Add a source →</a></div>
+          <div class="step"><b>1 · Add folders</b>Point at Documents, OneDrive, Dropbox, Google Drive or any folder.<br><a href="#" data-goto="sources" class="btn primary small" style="display:inline-block;margin-top:8px">📁 Add your first folder</a></div>
           <div class="step"><b>2 · Let it index</b>Word, PowerPoint, PDF, Excel, notes and emails are read and linked automatically.</div>
           <div class="step"><b>3 · Choose your AI</b>Claude (API key), Local AI on this laptop, or the Claude app on your subscription, for written answers, documents and decks.<br><a href="#" data-goto="sources">Choose →</a></div>
           <div class="step"><b>4 · Ask &amp; create</b>Ask questions here, or produce Word briefs and PowerPoint decks on the Create tab.</div>
@@ -853,6 +854,19 @@ async function renderHome() {
 }
 function homeAsk() { const q = $("#homeAsk").value.trim(); if (!q) return; $("#homeAsk").value = ""; show("ask"); $("#question").value = q; ask(); }
 $("#homeAskBtn").onclick = homeAsk;
+// Rediscover something you'd forgotten: prefer documents that have connections, fall back to any document.
+$("#surpriseBtn").onclick = async () => {
+  const o = await DATA.overview().catch(() => null);
+  if (!o || !o.documents) { toast("Add a folder first, then there's something to rediscover."); show("sources"); return; }
+  let pick = null;
+  for (let i = 0; i < 6 && !pick; i++) {
+    const rows = await api("/documents?limit=1&offset=" + Math.floor(Math.random() * o.documents)).catch(() => []);
+    if (!rows.length) continue;
+    const rel = await api("/documents/" + rows[0].id + "/related").catch(() => []);
+    if (rel.length || i === 5) pick = rows[0];
+  }
+  if (pick) openDoc(pick.id);
+};
 $("#homeAsk").addEventListener("keydown", e => { if (e.key === "Enter") homeAsk(); });
 
 // ---- library type filter
