@@ -66,6 +66,20 @@ class BrainService:
         self.brain = brain
         self.lock = threading.RLock()  # one SQLite connection: serialise access
         self.sync_state: dict[str, Any] = {"running": False, "last_finished": None, "last_results": []}
+        self.stop_event = threading.Event()
+        self.purge_removed()
+
+    def purge_removed(self) -> None:
+        """Forget sources that were removed from the config (their status rows and documents)."""
+        with self.lock:
+            self.brain.store.purge_sources({s.name for s in self.brain.config.all_sources()})
+
+    def stop_sync(self) -> dict[str, Any]:
+        if not self.sync_state["running"]:
+            return {"stopping": False}
+        self.stop_event.set()
+        self.sync_state["stopping"] = True
+        return {"stopping": True}
 
     @contextmanager
     def worker(self):
@@ -84,22 +98,32 @@ class BrainService:
         cfg = load_config(str(path)) if path.exists() else self.brain.config
         with self.lock:
             self.brain.config = cfg
+        self.purge_removed()
 
     def _run_sync(self, source: str | None) -> None:
         # A separate connection: SQLite (WAL) lets the UI keep searching while this thread writes.
         worker = Brain(self.brain.config, llm=self.brain.llm)
 
+        self.stop_event.clear()
+        self.sync_state.update(stopping=False, index=0, total=0, source="", seen=0, added=0)
+
         def progress(stats) -> None:
-            self.sync_state["progress"] = f"{stats.source}: {stats.seen} files checked, {stats.added} new"
+            self.sync_state.update(seen=stats.seen, added=stats.added, updated=stats.updated,
+                                   progress=f"{stats.source}: {stats.seen} files checked, {stats.added} new")
+
+        def on_source(i: int, n: int, name: str) -> None:
+            self.sync_state.update(index=i, total=n, source=name, seen=0, added=0,
+                                   progress=f"{name}: starting…")
 
         try:
-            results = [s.as_dict() for s in worker.sync(source, on_progress=progress)]
+            results = [s.as_dict() for s in worker.sync(source, on_progress=progress,
+                                                        should_stop=self.stop_event.is_set, on_source=on_source)]
             self.sync_state["last_results"] = results
         except Exception as exc:  # surface the problem in the UI rather than killing the thread
             self.sync_state["last_results"] = [{"source": source or "all", "errors": [str(exc)]}]
         finally:
             worker.store.close()
-            self.sync_state.update(running=False, last_finished=time.time(), progress="")
+            self.sync_state.update(running=False, stopping=False, last_finished=time.time(), progress="")
 
     def start_sync(self, source: str | None = None) -> dict[str, Any]:
         if self.sync_state["running"]:
@@ -263,6 +287,8 @@ def make_handler(service: BrainService, token: str | None):
             body = self._body()
             if p == "/sync":
                 return service.start_sync(body.get("source"))
+            if p == "/sync/stop":
+                return service.stop_sync()
             if p == "/pick-folder":
                 if self.client_address[0] not in {"127.0.0.1", "::1"}:
                     raise PermissionError("the folder picker only works from this computer")

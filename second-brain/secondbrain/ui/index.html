@@ -110,6 +110,10 @@ table.list tr.click { cursor: pointer; } table.list tr.click:hover td { backgrou
 .spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .banner { background: var(--accent-soft); color: var(--text); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; display: none; }
+.banner .brow { display: flex; align-items: center; gap: 10px; }
+.banner .brow > #syncText { flex: 1; }
+.syncbar { height: 6px; border-radius: 3px; background: rgba(127,127,127,.25); margin-top: 8px; overflow: hidden; }
+.syncbar > i { display: block; height: 100%; width: 0; background: var(--accent, #5b5bd6); border-radius: 3px; transition: width .4s; }
 .hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
 .hint code { background: var(--panel-2); padding: 1px 4px; border-radius: 4px; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -202,7 +206,11 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
   </aside>
 
   <main>
-    <div class="banner" id="syncBanner"><span class="spinner"></span> <span id="syncText">Syncing…</span></div>
+    <div class="banner" id="syncBanner">
+      <div class="brow"><span class="spinner"></span> <span id="syncText">Syncing…</span>
+        <button class="btn small" id="syncStop" title="Stop after the current file. What's already indexed is kept.">⏹ Stop</button></div>
+      <div class="syncbar"><i id="syncBar"></i></div>
+    </div>
 
     <!-- HOME -->
     <section class="view active" id="view-home">
@@ -525,7 +533,13 @@ async function refreshStatus() {
     <div>${s.documents} documents · ${s.links} connections</div>
     <div><span class="dot ${aiStatus(STATUS).ok ? "good" : "warn"}"></span>${esc(aiStatus(STATUS).text)}</div>`;
   $("#syncBanner").style.display = sync.running ? "block" : "none";
-  $("#syncText").textContent = sync.running ? (sync.progress || "Syncing your sources… (the first sync of a large folder can take a few minutes)") : "";
+  if (sync.running) {
+    const of = sync.total ? `Source ${Math.min(sync.index + 1, sync.total)} of ${sync.total}` : "Syncing";
+    const detail = sync.source ? ` · ${sync.source} · ${sync.seen || 0} files checked${sync.added ? ", " + sync.added + " new" : ""}` : " your sources…";
+    $("#syncText").textContent = sync.stopping ? "Stopping after the current file…" : of + detail;
+    $("#syncBar").style.width = (sync.total ? Math.max(4, Math.round(100 * sync.index / sync.total)) : 4) + "%";
+    $("#syncStop").disabled = !!sync.stopping;
+  } else { $("#syncText").textContent = ""; }
   $("#welcome").style.display = s.documents === 0 ? "block" : "none";
   const opts = '<option value="">All sources</option>' + STATUS.configured_sources.map(x => `<option>${esc(x.name)}</option>`).join("");
   for (const id of ["#searchSource", "#libSource"]) { const el = $(id), v = el.value; el.innerHTML = opts; el.value = v; }
@@ -533,6 +547,7 @@ async function refreshStatus() {
   if (refreshStatus._wasRunning && !sync.running) { toast("Sync finished"); if ($("#view-library").classList.contains("active")) loadLibrary(true); }
   refreshStatus._wasRunning = sync.running;
 }
+$("#syncStop").onclick = async () => { $("#syncStop").disabled = true; await api("/sync/stop", {}).catch(e => toast(e.message)); refreshStatus(); };
 setInterval(refreshStatus, 3000);
 
 // ---------- drawer (document view) ----------

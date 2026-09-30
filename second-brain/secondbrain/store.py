@@ -213,6 +213,18 @@ class Store:
         self.db.execute("DELETE FROM links WHERE src = ? OR dst = ?", (doc_id, doc_id))
         self.db.execute("UPDATE documents SET deleted = 1 WHERE id = ?", (doc_id,))
 
+    def purge_sources(self, keep: set[str]) -> list[str]:
+        """Forget sources that are no longer configured: drop their status row and retire their documents.
+        Only touches names that have a sync record, so notes and saved answers are never affected."""
+        gone = [r["name"] for r in self.db.execute("SELECT name FROM sources") if r["name"] not in keep]
+        for name in gone:
+            for doc_id in self.uris_for_source(name).values():
+                self.mark_deleted(doc_id)
+            self.db.execute("DELETE FROM sources WHERE name = ?", (name,))
+        if gone:
+            self.db.commit()
+        return gone
+
     def uris_for_source(self, source: str) -> dict[str, int]:
         rows = self.db.execute("SELECT uri, id FROM documents WHERE source = ? AND deleted = 0", (source,))
         return {r["uri"]: r["id"] for r in rows}

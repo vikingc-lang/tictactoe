@@ -10,7 +10,7 @@ from typing import Callable
 from . import graph
 from .config import SourceConfig
 from .connectors import Item, build_connector
-from .parsers import kind_for, parse
+from .parsers import MAX_TEXT_CHARS, kind_for, parse
 from .store import Store
 from .text import chunk_text, term_frequencies, title_from_text
 
@@ -44,6 +44,8 @@ def index_item(store: Store, source: str, item: Item, text: str | None = None) -
     if text is None:
         text, title_hint = parse(item.load(), item.ext)
     text = text.strip()
+    if len(text) > MAX_TEXT_CHARS:
+        text = text[:MAX_TEXT_CHARS] + "\n\n… (document truncated for indexing)"
     if not text:
         raise ValueError("no readable text (empty file, or a scanned PDF that needs OCR)")
     title = title_hint or title_from_text(text) or item.title
@@ -71,8 +73,10 @@ def refresh_links(store: Store, changed: list[int]) -> None:
 
 
 def sync_source(store: Store, source: SourceConfig,
-                on_progress: Callable[[SyncStats], None] | None = None) -> SyncStats:
+                on_progress: Callable[[SyncStats], None] | None = None,
+                should_stop: Callable[[], bool] | None = None) -> SyncStats:
     stats = SyncStats(source.name)
+    stopped = False
     connector = build_connector(source)
     known = store.uris_for_source(source.name)
     connector.known = store.modified_for_source(source.name)  # lets connectors skip re-downloading
@@ -81,6 +85,9 @@ def sync_source(store: Store, source: SourceConfig,
     children: dict[str, list[int]] = {}  # parent uri -> changed attachment doc ids
     try:
         for item in connector.items():
+            if should_stop and should_stop():
+                stopped = True
+                break
             stats.seen += 1
             seen.add(item.uri)
             try:
@@ -102,6 +109,11 @@ def sync_source(store: Store, source: SourceConfig,
         # Source unreachable (offline drive, network down): keep what we already know.
         stats.errors.append(f"source error: {exc}")
         store.commit()
+        store.record_sync(source.name, source.type, stats.as_dict())
+        return stats
+    if stopped:  # cancelled part-way: keep everything already indexed, and don't treat unvisited files as deleted
+        store.commit()
+        stats.errors.append("stopped before finishing; press Sync to continue")
         store.record_sync(source.name, source.type, stats.as_dict())
         return stats
     if getattr(connector, "prune", True):

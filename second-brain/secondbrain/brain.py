@@ -107,12 +107,16 @@ class Brain:
         return format_context(hits, min(max_chars, getattr(self.llm, "context_chars", max_chars)))
 
     # ---- ingest ----------------------------------------------------------
-    def sync(self, source_name: str | None = None, on_progress=None) -> list[SyncStats]:
+    def sync(self, source_name: str | None = None, on_progress=None, should_stop=None,
+             on_source=None) -> list[SyncStats]:
         results = []
-        for src in self.config.all_sources():
-            if source_name and src.name != source_name:
-                continue
-            results.append(sync_source(self.store, src, on_progress))
+        todo = [s for s in self.config.all_sources() if not source_name or s.name == source_name]
+        for i, src in enumerate(todo):
+            if should_stop and should_stop():
+                break
+            if on_source:
+                on_source(i, len(todo), src.name)
+            results.append(sync_source(self.store, src, on_progress, should_stop))
         if self.config.auto_enrich:
             self.enrich(limit=25)
         return results

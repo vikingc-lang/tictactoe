@@ -18,6 +18,11 @@ RICH_EXTS = {".html", ".htm", ".json", ".eml", ".msg", ".mbox", ".pdf", ".docx",
 EMAIL_EXTS = {".eml", ".msg", ".mbox"}
 SUPPORTED_EXTS = TEXT_EXTS | RICH_EXTS
 
+# One document never contributes more than this much text (about a 600-page book). Giant data exports would
+# otherwise take minutes to split and index, and drown out real documents in search.
+MAX_TEXT_CHARS = 1_500_000
+MAX_SHEET_ROWS = 20_000
+
 KIND_BY_EXT = {
     ".md": "note", ".markdown": "note", ".txt": "note", ".org": "note",
     ".pdf": "pdf", ".docx": "document", ".pptx": "presentation", ".xlsx": "spreadsheet",
@@ -148,10 +153,16 @@ def parse(data: bytes, ext: str) -> tuple[str, str | None]:
             raise ValueError("install openpyxl to index .xlsx files") from exc
         wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
         parts = []
+        chars = 0
         for ws in wb.worksheets:
             parts.append(f"## Sheet {ws.title}")
-            for row in ws.iter_rows(values_only=True):
+            for n, row in enumerate(ws.iter_rows(values_only=True)):
+                if n >= MAX_SHEET_ROWS or chars >= MAX_TEXT_CHARS:  # huge data exports: index the top, skip the rest
+                    parts.append(f"… (sheet truncated after {n} rows)")
+                    break
                 if any(v is not None for v in row):
-                    parts.append(" | ".join("" if v is None else str(v) for v in row))
+                    line = " | ".join("" if v is None else str(v) for v in row)
+                    chars += len(line)
+                    parts.append(line)
         return "\n".join(parts), None
     raise ValueError(f"unsupported file type: {ext}")
