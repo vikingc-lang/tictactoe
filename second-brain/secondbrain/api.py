@@ -263,6 +263,10 @@ def make_handler(service: BrainService, token: str | None):
             body = self._body()
             if p == "/sync":
                 return service.start_sync(body.get("source"))
+            if p == "/pick-folder":
+                if self.client_address[0] not in {"127.0.0.1", "::1"}:
+                    raise PermissionError("the folder picker only works from this computer")
+                return {"path": _pick_folder()}
             if p == "/sources":
                 return self._add_source(body)
             if p == "/sources/remove":
@@ -405,6 +409,26 @@ def make_handler(service: BrainService, token: str | None):
             self._route("POST")
 
     return Handler
+
+
+def _pick_folder() -> str:
+    """Show the operating system's folder picker (on the machine running the app); '' if cancelled."""
+    import subprocess
+    import sys
+
+    script = (
+        "import tkinter as tk\n"
+        "from tkinter import filedialog\n"
+        "r = tk.Tk(); r.withdraw(); r.attributes('-topmost', True)\n"
+        "print(filedialog.askdirectory(title='Choose a folder for your Second Brain', mustexist=True))\n"
+    )
+    try:
+        out = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        return ""
+    if out.returncode != 0:
+        raise RuntimeError("couldn't open the folder picker; paste the folder path instead")
+    return out.stdout.strip().replace("/", os.sep)
 
 
 def make_server(brain: Brain, host: str = "127.0.0.1", port: int = 8787,

@@ -366,6 +366,7 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
             </select></div>
           <div style="width:200px"><label>Name</label><input type="text" id="srcName" placeholder="e.g. Clients"></div>
           <div class="grow"><label id="srcTargetLabel">Folder path</label><input type="text" id="srcTarget" placeholder=""></div>
+          <div style="align-self:flex-end"><button class="btn" id="srcBrowse" type="button">📁 Browse…</button></div>
         </div>
         <div class="row" id="mailFields" style="display:none">
           <div style="width:220px"><label>IMAP server</label><input type="text" id="mailHost" placeholder="filled in for common providers"></div>
@@ -644,6 +645,21 @@ $("#srcTarget").addEventListener("input", () => {
 });
 $("#mailHost").addEventListener("input", () => { $("#mailHost").dataset.touched = "1"; });
 $("#srcType").onchange = srcHint; srcHint();
+const _srcHintBase = srcHint;
+srcHint = function () { _srcHintBase(); $("#srcBrowse").style.display = $("#srcType").value === "folder" ? "" : "none"; };
+$("#srcType").onchange = srcHint; srcHint();
+$("#srcBrowse").onclick = async () => {
+  const b = $("#srcBrowse"); b.disabled = true; b.textContent = "Choose a folder in the window that opened…";
+  try {
+    const r = await fetch("/pick-folder", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const j = await r.json();
+    if (j.path) {
+      $("#srcTarget").value = j.path;
+      if (!$("#srcName").value.trim()) $("#srcName").value = j.path.split(/[\\/]/).filter(Boolean).pop().replace(/[^A-Za-z0-9 _.\-]/g, "").slice(0, 60);
+    } else if (j.error) { alert(j.error); }
+  } catch (e) { alert("Couldn't open the folder picker. Paste the folder path instead."); }
+  b.disabled = false; b.textContent = "📁 Browse…";
+};
 
 function renderSources() {
   if (!STATUS) return;
