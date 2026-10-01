@@ -412,6 +412,11 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px sol
             <button class="btn small" id="localRefresh">↻ Find models</button>
             <button class="btn small primary" id="localTest">Test</button>
           </div>
+          <div class="row" style="margin-top:8px" id="pullRow">
+            <input type="text" id="pullName" class="grow" list="pullSuggest" placeholder="Download a model, e.g. qwen2.5:7b" aria-label="Model to download" autocomplete="off">
+            <datalist id="pullSuggest"><option value="qwen2.5:7b"><option value="qwen3:8b"><option value="gemma3:12b"><option value="mistral:7b"><option value="phi3:mini"></datalist>
+            <button class="btn small" id="pullGo">⬇ Download (Ollama)</button>
+          </div>
           <p class="small" id="localState" style="margin:8px 0 0"></p>
           <details class="small" style="margin-top:8px"><summary><b>How to set up local AI (10 minutes, one time)</b></summary>
             <ol style="padding-left:18px;margin:8px 0">
@@ -1111,6 +1116,8 @@ Object.assign(DATA, {  // v0.4: AI settings live on the server (secrets.env)
   setAi: b => api("/settings/ai", b),
   localModels: (provider, url) => api(`/settings/ai/models?provider=${encodeURIComponent(provider)}&url=${encodeURIComponent(url)}`),
   testAi: () => api("/settings/ai/test", {}),
+  pullStatus: () => api("/settings/ai/pull"),
+  pullModel: (url, model) => api("/settings/ai/pull", { url, model }),
   fromReply: (topic, text, format, sources) => api("/create/from-reply", { topic, text, format, sources }),
   connectDesktop: () => api("/settings/claude-desktop", {}),
 });
@@ -1130,6 +1137,7 @@ function aiPanels() {
   $("#aiClaude").hidden = m !== "claude"; $("#aiLocal").hidden = m !== "local"; $("#aiApp").hidden = m !== "claude_app";
   $$("#aiModes .ai-mode").forEach(l => l.classList.toggle("on", l.querySelector("input").checked));
   $("#localUrl").placeholder = LOCAL_URLS[$("#localProvider").value];
+  $("#pullRow").hidden = $("#localProvider").value !== "ollama";
   return m;
 }
 async function loadAi() {
@@ -1176,6 +1184,29 @@ $("#localTest").onclick = async () => {
   const r = await DATA.testAi().catch(e => ({ ok: false, error: e.message }));
   if (token === localToken) $("#localState").innerHTML = r.ok ? `<span class="dot good"></span>It works: ${esc(r.label)} replied “${esc(r.reply)}”.` : `<span class="dot warn"></span>${esc(r.error)}`;
   b.disabled = false;
+};
+async function watchPull() {  // poll the background download until it finishes
+  const b = $("#pullGo"); b.disabled = true;
+  for (;;) {
+    const s = await DATA.pullStatus().catch(e => ({ state: "error", error: e.message }));
+    const token = ++localToken;
+    if (s.state === "running") {
+      $("#localState").innerHTML = `<span class="spinner"></span> Downloading ${esc(s.model)}: ${s.percent || 0}% (${esc(s.status || "")})`;
+      await new Promise(r => setTimeout(r, 1500));
+      continue;
+    }
+    if (s.state === "done") {
+      await loadModels();
+      if ([...$("#localModel").options].some(o => o.value === s.model)) { $("#localModel").value = s.model; saveAi(); }
+      $("#localState").innerHTML = `<span class="dot good"></span>Downloaded ${esc(s.model)} and selected it. Press Test to try it.`;
+    } else if (s.state === "error") $("#localState").innerHTML = `<span class="dot warn"></span>${esc(s.error)}`;
+    break;
+  }
+  b.disabled = false;
+}
+$("#pullGo").onclick = async () => {
+  try { await DATA.pullModel($("#localUrl").value.trim(), $("#pullName").value); watchPull(); }
+  catch (e) { toast(e.message, 6000); }
 };
 if ($("#desktopConnect")) $("#desktopConnect").onclick = async () => {
   try { const r = await DATA.connectDesktop(); toast("Connected. Quit and reopen Claude Desktop to use your brain there.", 8000); AI.claude_desktop = r; loadAi(); }

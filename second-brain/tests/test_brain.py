@@ -763,6 +763,15 @@ class _FakeLocalAI:
             def do_POST(self):  # noqa: N802
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 fake.requests.append((self.path, body))
+                if self.path == "/api/pull":
+                    lines = [{"status": "pulling", "total": 100, "completed": 50}, {"status": "success"}]
+                    if body["model"] == "bad:model":
+                        lines = [{"error": "pull model manifest: file does not exist"}]
+                    data = "".join(json.dumps(x) + "\n" for x in lines).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    return self.wfile.write(data)
                 wants_json = "format" in body or "response_format" in body or "JSON schema" in body["messages"][0]["content"]
                 deck = {"title": "Ops", "subtitle": "s", "slides": [{"title": "Automate Lyon", "bullets": ["a"],
                                                                       "speaker_notes": "[1]"}]}
@@ -875,6 +884,28 @@ def test_ai_off_and_switching_apply_immediately(workspace, ai_env):
     assert r["mode"] == "extractive" and "switched off" in r["reason"]
     ai_env.setenv("BRAIN_AI_MODE", "claude_app")
     assert brain.ask("warehouse automation?")["mode"] == "handoff"             # same Brain, no restart
+
+
+def test_pull_model_in_background(ai_env):
+    import time
+
+    from secondbrain.llm import pull_status, start_pull
+
+    fake = _FakeLocalAI()
+    try:
+        with pytest.raises(ValueError):
+            start_pull(fake.url, "bad name; rm")
+        for model, expected in (("qwen2.5:7b", "done"), ("bad:model", "error")):
+            start_pull(fake.url, model)
+            for _ in range(100):
+                if pull_status()["state"] != "running":
+                    break
+                time.sleep(0.05)
+            status = pull_status()
+            assert status["state"] == expected and status["model"] == model
+        assert "does not exist" in status["error"]
+    finally:
+        fake.close()
 
 
 def test_ai_settings_api_and_reply_upload(workspace, ai_env):

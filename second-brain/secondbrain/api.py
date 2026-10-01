@@ -46,7 +46,7 @@ from urllib.request import url2pathname
 from .brain import Brain
 from . import claude_desktop
 from .config import DEFAULT_HOME, append_source, load_config, remove_source, save_secret
-from .llm import AI_MODES, LOCAL_PROVIDERS, LLMUnavailable, LocalLLM, ai_settings, claude_configured
+from .llm import AI_MODES, LOCAL_PROVIDERS, LLMUnavailable, LocalLLM, ai_settings, claude_configured, pull_status, start_pull
 
 UI_FILE = Path(__file__).parent / "ui" / "index.html"
 SECRET_OPTIONS = {"headers", "password", "oauth2_token", "credentials"}  # never sent to the browser
@@ -275,6 +275,8 @@ def make_handler(service: BrainService, token: str | None):
                         return brain.document(int(m.group(1)))
                     if m := re.fullmatch(r"/documents/(\d+)/related", p):
                         return brain.related(int(m.group(1)))
+                if p == "/settings/ai/pull":
+                    return pull_status()
                 if p == "/settings/ai/models":
                     local = LocalLLM(q.get("provider", "ollama"), q.get("url", ""))
                     try:
@@ -316,6 +318,10 @@ def make_handler(service: BrainService, token: str | None):
                 if p == "/settings/claude-desktop":
                     return claude_desktop.connect(service.config_file() if service.config_file().exists() else None)
                 return self._save_ai(body)
+            if p == "/settings/ai/pull":
+                if not _is_local(self.client_address[0]):
+                    raise PermissionError("models can only be downloaded from this computer")
+                return start_pull(body.get("url", ""), body.get("model", ""))
             if p == "/settings/ai/test":
                 with service.worker() as w:
                     try:

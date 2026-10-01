@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import urllib.error
 import urllib.request
 from typing import Any, TypeVar
@@ -183,6 +184,27 @@ class LocalLLM:
             return sorted(m["name"] for m in self._request("/api/tags", timeout=10).get("models", []))
         return sorted(m["id"] for m in self._request("/models", timeout=10).get("data", []))
 
+    def pull(self, model: str, on_progress=None) -> None:
+        """Download ``model`` through Ollama (streams progress lines). Ollama only."""
+        if self.provider != "ollama":
+            raise LLMUnavailable("downloading models from here only works with Ollama")
+        req = urllib.request.Request(self.url + "/api/pull", data=json.dumps({"model": model, "stream": True}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                for line in resp:
+                    if not line.strip():
+                        continue
+                    msg = json.loads(line.decode("utf-8"))
+                    if msg.get("error"):
+                        raise LLMUnavailable(f"Ollama could not download '{model}': {msg['error']}")
+                    if on_progress:
+                        on_progress(msg)
+        except urllib.error.HTTPError as exc:
+            raise LLMUnavailable(f"Ollama could not download '{model}': {exc.read().decode('utf-8', 'replace')[:200]}") from exc
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            raise LLMUnavailable(f"cannot reach Ollama at {self.url}: is it running?") from exc
+
     def _model(self) -> str:
         if not self.model:
             installed = self.models()
@@ -231,6 +253,49 @@ class LocalLLM:
             except (ValueError, ValidationError) as exc:
                 last = exc
         raise LLMUnavailable(f"the local model didn't return valid structured output ({last})")
+
+
+_PULL: dict[str, Any] = {"state": "idle"}
+_PULL_LOCK = threading.Lock()
+
+
+def pull_status() -> dict[str, Any]:
+    with _PULL_LOCK:
+        return dict(_PULL)
+
+
+def start_pull(url: str, model: str) -> dict[str, Any]:
+    """Download an Ollama model in the background; poll ``pull_status()`` for progress."""
+    model = model.strip()
+    if not model or len(model) > 100 or not re.fullmatch(r"[A-Za-z0-9._:/@-]+", model):
+        raise ValueError("enter a model name like qwen2.5:7b")
+    with _PULL_LOCK:
+        if _PULL.get("state") == "running":
+            raise ValueError(f"already downloading {_PULL.get('model')}")
+        _PULL.clear()
+        _PULL.update({"state": "running", "model": model, "status": "starting", "percent": 0})
+    local = LocalLLM("ollama", url)
+
+    def progress(msg: dict) -> None:
+        with _PULL_LOCK:
+            _PULL["status"] = msg.get("status", "")
+            if msg.get("total"):
+                _PULL["percent"] = int(100 * msg.get("completed", 0) / msg["total"])
+
+    def run() -> None:
+        try:
+            local.pull(model, progress)
+            result = {"state": "done", "model": model, "percent": 100, "status": "success"}
+        except LLMUnavailable as exc:
+            result = {"state": "error", "model": model, "error": str(exc)}
+        except Exception as exc:  # never leave the status stuck on "running"
+            result = {"state": "error", "model": model, "error": str(exc)}
+        with _PULL_LOCK:
+            _PULL.clear()
+            _PULL.update(result)
+
+    threading.Thread(target=run, daemon=True, name="ollama-pull").start()
+    return pull_status()
 
 
 class HandoffLLM:
