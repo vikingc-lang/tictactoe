@@ -1,0 +1,13 @@
+{
+  "name": "second-brain-standalone",
+  "private": true,
+  "description": "Builds second-brain.html: the whole app in one file that runs in a browser.",
+  "type": "module",
+  "scripts": { "build": "node build.mjs" },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "0.128.0",
+    "esbuild": "0.28.2",
+    "pdfjs-dist": "3.11.174",
+    "pptxgenjs": "4.0.1"
+  }
+}

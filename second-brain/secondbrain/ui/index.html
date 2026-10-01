@@ -1,0 +1,1278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Second Brain</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f0f2f5; --text: #1b1f24; --muted: #5f6b7a; --border: #dde1e6;
+  --accent: #5b5bd6; --accent-soft: #ececfb; --good: #1f8a4c; --warn: #b7791f; --bad: #c53030;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 12px rgba(16,24,40,.06);
+  --e-explicit: #5b5bd6; --e-related: #9aa4b2; --e-entity: #d97706;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216; --panel: #171b21; --panel-2: #1e232b; --text: #e7eaee; --muted: #9aa4b2; --border: #2a303a;
+    --accent: #8b8bff; --accent-soft: #23234a; --good: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    --shadow: 0 1px 2px rgba(0,0,0,.3); --e-related: #4b5563;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1216; --panel: #171b21; --panel-2: #1e232b; --text: #e7eaee; --muted: #9aa4b2; --border: #2a303a;
+  --accent: #8b8bff; --accent-soft: #23234a; --good: #4ade80; --warn: #fbbf24; --bad: #f87171;
+  --shadow: 0 1px 2px rgba(0,0,0,.3); --e-related: #4b5563;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+a { color: var(--accent); }
+button, input, textarea, select { font: inherit; color: inherit; }
+.app { display: grid; grid-template-columns: 220px 1fr; height: 100vh; }
+aside.nav { background: var(--panel); border-right: 1px solid var(--border); padding: 18px 12px; display: flex; flex-direction: column; gap: 4px; }
+.brand { font-weight: 700; font-size: 18px; padding: 4px 10px 16px; display: flex; gap: 8px; align-items: center; }
+.nav button { all: unset; cursor: pointer; padding: 9px 12px; border-radius: 8px; color: var(--muted); display: flex; gap: 10px; align-items: center; }
+.nav button:hover { background: var(--panel-2); color: var(--text); }
+.nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nav .spacer { flex: 1; }
+.nav .meta { font-size: 12px; color: var(--muted); padding: 8px 12px; line-height: 1.7; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
+.dot.good { background: var(--good); } .dot.warn { background: var(--warn); } .dot.busy { background: var(--accent); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+main { overflow: auto; padding: 28px clamp(16px, 4vw, 48px) 60px; }
+.view { display: none; max-width: 980px; margin: 0 auto; }
+.view.active { display: block; }
+h1 { font-size: 24px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 22px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; box-shadow: var(--shadow); margin-bottom: 16px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 180px; }
+input[type=text], input[type=password], input[type=number], textarea, select {
+  width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; outline: none; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+textarea { resize: vertical; min-height: 90px; }
+label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; font-weight: 500; }
+.btn { text-decoration: none; display: inline-block; border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 9px 16px; cursor: pointer; font-weight: 500; white-space: nowrap; }
+.btn:hover { background: var(--panel-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+.btn.danger { color: var(--bad); }
+.btn:disabled { opacity: .55; cursor: default; }
+.muted { color: var(--muted); } .small { font-size: 13px; }
+.pill { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+.pill.accent { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.chat { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
+.msg.user { align-self: flex-end; background: var(--accent); color: #fff; padding: 10px 14px; border-radius: 14px 14px 4px 14px; max-width: 80%; }
+.msg.bot { background: var(--panel); border: 1px solid var(--border); padding: 16px 18px; border-radius: 12px; box-shadow: var(--shadow); }
+.msg.bot .sources { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.cite { background: var(--accent-soft); color: var(--accent); border-radius: 5px; padding: 0 5px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.srcchip { cursor: pointer; font-size: 13px; padding: 4px 10px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--border); }
+.srcchip:hover { border-color: var(--accent); }
+.md h1, .md h2, .md h3 { margin: 14px 0 6px; line-height: 1.3; } .md h1 { font-size: 20px; } .md h2 { font-size: 17px; } .md h3 { font-size: 15px; }
+.md p { margin: 6px 0; } .md ul, .md ol { margin: 6px 0; padding-left: 22px; }
+.md table { border-collapse: collapse; margin: 8px 0; } .md td, .md th { border: 1px solid var(--border); padding: 4px 8px; }
+.md code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+.composer { position: sticky; bottom: 0; background: linear-gradient(transparent, var(--bg) 30%); padding-top: 16px; }
+.composer .card { display: flex; gap: 10px; padding: 10px; align-items: flex-end; margin: 0; }
+.composer textarea { border: none; box-shadow: none; min-height: 44px; max-height: 200px; }
+.result { padding: 12px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.result:hover .rtitle { color: var(--accent); }
+.rtitle { font-weight: 600; } .snippet { color: var(--muted); font-size: 14px; margin-top: 2px; }
+mark { background: #fde68a; color: inherit; border-radius: 2px; padding: 0 1px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) mark { background: #715d17; } }
+table.list { width: 100%; border-collapse: collapse; }
+table.list th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 8px; border-bottom: 1px solid var(--border); }
+table.list td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.list tr.click { cursor: pointer; } table.list tr.click:hover td { background: var(--panel-2); }
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.step { background: var(--panel-2); border-radius: 10px; padding: 14px; }
+.step b { display: block; margin-bottom: 4px; }
+#graphWrap { position: relative; height: calc(100vh - 190px); min-height: 420px; padding: 0; overflow: hidden; }
+#graph { width: 100%; height: 100%; display: block; cursor: grab; }
+.legend { position: absolute; left: 12px; bottom: 10px; font-size: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; display: flex; gap: 12px; }
+.legend i { display: inline-block; width: 16px; height: 3px; vertical-align: middle; margin-right: 4px; border-radius: 2px; }
+.drawer { position: fixed; top: 0; right: 0; height: 100vh; width: min(520px, 100vw); background: var(--panel); border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgba(0,0,0,.12); transform: translateX(105%); transition: transform .2s ease; z-index: 20; display: flex; flex-direction: column; }
+.drawer.open { transform: none; }
+.drawer header { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; align-items: flex-start; }
+.drawer header h2 { font-size: 18px; margin: 0; flex: 1; }
+.drawer .body { overflow: auto; padding: 16px 18px; }
+.drawer pre { white-space: pre-wrap; word-wrap: break-word; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--panel-2); padding: 12px; border-radius: 8px; max-height: 45vh; overflow: auto; }
+.rel { padding: 7px 0; border-bottom: 1px dashed var(--border); cursor: pointer; display: flex; gap: 8px; align-items: baseline; }
+.rel:hover span.t { color: var(--accent); }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; z-index: 30; padding: 16px; }
+.modal.open { display: flex; }
+.modal .card { width: min(560px, 100%); margin: 0; }
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; z-index: 40; display: none; max-width: 90vw; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.banner { background: var(--accent-soft); color: var(--text); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; display: none; }
+.banner .brow { display: flex; align-items: center; gap: 10px; }
+.banner .brow > #syncText { flex: 1; }
+.syncbar { height: 6px; border-radius: 3px; background: rgba(127,127,127,.25); margin-top: 8px; overflow: hidden; }
+.syncbar > i { display: block; height: 100%; width: 0; background: var(--accent, #5b5bd6); border-radius: 3px; transition: width .4s; }
+.hint { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.hint code { background: var(--panel-2); padding: 1px 4px; border-radius: 4px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { all: unset; cursor: pointer; padding: 8px 14px; font-size: 14px; }
+.seg button.on { background: var(--accent); color: #fff; }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  aside.nav { flex-direction: row; overflow-x: auto; padding: 8px; border-right: none; border-bottom: 1px solid var(--border); }
+  .brand, .nav .spacer, .nav .meta { display: none; }
+  .nav button { padding: 8px 10px; white-space: nowrap; }
+}
+
+/* ---- UI extensions ---- */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); cursor: pointer; transition: border-color .15s; }
+.tile:hover { border-color: var(--accent); }
+.tile .n { font-size: 26px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.tile .l { color: var(--muted); font-size: 13px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid2 > .card { margin-bottom: 0; }
+[hidden] { display: none !important; }
+.grid2 > *, .qa > * { min-width: 0; }
+.qa .btn { white-space: normal; }
+.qa { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.qa .btn { text-align: left; }
+.list-item { display: flex; gap: 10px; align-items: baseline; padding: 8px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.list-item:last-child { border-bottom: none; }
+.list-item:hover .t { color: var(--accent); }
+.list-item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; padding: 4px 11px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--border); cursor: pointer; color: var(--text); }
+.chip:hover { border-color: var(--accent); }
+.chip.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; font-weight: 600; }
+.chip .x { border: none; background: none; cursor: pointer; color: inherit; opacity: .7; padding: 0 0 0 2px; font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.ref-add { margin-left: auto; flex: none; }
+.createbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.palette { align-items: flex-start; padding-top: 12vh; }
+.palette .card { width: min(640px, 100%); padding: 0; overflow: hidden; }
+.palette input[type=text] { border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 16px 18px; font-size: 17px; box-shadow: none; }
+.pal-item { padding: 10px 18px; display: flex; gap: 10px; cursor: pointer; align-items: baseline; }
+.pal-item.sel, .pal-item:hover { background: var(--accent-soft); }
+.pal-foot { padding: 8px 18px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); }
+kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--panel-2); color: var(--muted); }
+.navtools { display: flex; gap: 6px; padding: 0 12px 6px; }
+.nav .navtools .btn { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 5px 10px; font-size: 13px; color: var(--text); display: inline-flex; gap: 6px; align-items: center; }
+.nav .navtools .btn:hover { background: var(--panel-2); }
+.nav button .pill { margin-left: auto; }
+.btn:focus-visible, .chip:focus-visible, .nav button:focus-visible, .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 760px) { .grid2, .qa { grid-template-columns: 1fr; } .navtools { padding: 0; } .navtools #findBtn kbd { display: none; } }
+
+/* ---- v0.3: digest, collections, conversation, dates ---- */
+.brief { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; }
+.datepill { font-variant-numeric: tabular-nums; }
+.collbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.collbar select { width: auto; min-width: 200px; }
+.askhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+/* ---- v0.4: choose the AI, Claude-app hand-off ---- */
+.ai-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0 14px; }
+.ai-mode { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: var(--panel); min-width: 0; }
+.ai-mode:hover { background: var(--panel-2); }
+.ai-mode.on { border-color: var(--accent); background: var(--accent-soft); }
+.ai-mode input { margin-top: 4px; width: auto; flex: none; }
+.ai-mode span { display: block; font-size: 13px; color: var(--muted); }
+.ai-panel { border-top: 1px solid var(--border); padding-top: 12px; }
+.ai-panel select, .ai-panel input { min-width: 0; }
+.handoff { border: 1px dashed var(--accent); border-radius: 10px; padding: 12px 14px; background: var(--accent-soft); }
+.handoff .ho-steps { margin: 6px 0 10px; padding-left: 20px; }
+.handoff pre.ho-pre { white-space: pre-wrap; max-height: 260px; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 12px; }
+.handoff textarea { margin-top: 10px; width: 100%; background: var(--panel); }
+.handoff details { flex-basis: 100%; }
+@media (max-width: 760px) { .ai-modes { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="nav" id="nav">
+    <div class="brand">🧠 Second Brain</div>
+    <button data-view="home" class="active">🏠 Home</button>
+    <button data-view="ask">💬 Ask</button>
+    <button data-view="search">🔎 Search</button>
+    <button data-view="library">📚 Library</button>
+    <button data-view="graph">🕸️ Connections</button>
+    <button data-view="create">✨ Create <span class="pill accent" id="navRefCount" hidden></span></button>
+    <button data-view="sources">🔌 Sources &amp; settings</button>
+    <button id="rememberBtn">📝 Remember…</button>
+    <div class="spacer"></div>
+    <div class="navtools"><button class="btn grow" id="findBtn" title="Quick find (Ctrl/⌘+K)">🔍 Find <kbd>⌘K</kbd></button><button class="btn" id="themeBtn" aria-label="Switch theme">🌓</button></div>
+    <div class="meta" id="meta">Loading…</div>
+  </aside>
+
+  <main>
+    <div class="banner" id="syncBanner">
+      <div class="brow"><span class="spinner"></span> <span id="syncText">Syncing…</span>
+        <button class="btn small" id="syncStop" title="Stop after the current file. What's already indexed is kept.">⏹ Stop</button></div>
+      <div class="syncbar"><i id="syncBar"></i></div>
+    </div>
+
+    <!-- HOME -->
+    <section class="view active" id="view-home">
+      <h1 id="greet">Welcome back</h1>
+      <p class="sub">Your second brain at a glance.</p>
+      <div class="card row" style="padding:10px">
+        <input type="text" id="homeAsk" class="grow" placeholder="Ask anything about your work… e.g. What did we agree with Acme on pricing?" aria-label="Ask a question">
+        <button class="btn primary" id="homeAskBtn">Ask</button>
+        <button class="btn" id="surpriseBtn" title="Open a random document from your library and see what it connects to">🎲 Surprise me</button>
+      </div>
+      <div class="tiles" id="tiles"></div>
+      <div class="grid2">
+        <div class="card"><h3 style="margin-top:0">Quick actions</h3>
+          <div class="qa">
+            <button class="btn" data-create="docx">📄 Write a document</button>
+            <button class="btn" data-create="deck">📊 Build a deck</button>
+            <button class="btn" data-remember>📝 Remember something</button>
+            <button class="btn" data-goto="sources">➕ Add a source</button>
+            <button class="btn" data-goto="graph">🕸️ Explore connections</button>
+            <button class="btn" data-goto="search">🔎 Search everything</button>
+          </div></div>
+        <div class="card"><h3 style="margin-top:0">Recently added</h3><div id="homeRecent"></div></div>
+      </div>
+      <div class="card" style="margin-top:16px" id="digestCard">
+        <div class="row" style="justify-content:space-between">
+          <h3 style="margin:0">What's new <select id="digestDays" aria-label="Period" style="width:auto;display:inline-block;padding:3px 8px;font-size:13px;margin-left:6px"><option value="1">today</option><option value="7" selected>last 7 days</option><option value="30">last 30 days</option></select></h3>
+          <button class="btn small primary" id="briefBtn">✨ Brief me</button>
+        </div>
+        <div class="small muted" id="digestSummary" style="margin-top:6px"></div>
+        <div id="digestList" style="margin-top:4px"></div>
+        <div id="digestBrief"></div>
+      </div>
+      <div class="card" style="margin-top:16px"><div class="row" style="justify-content:space-between"><h3 style="margin:0">Sources</h3><a href="#" data-goto="sources" class="small">Manage →</a></div><div id="homeSources" style="margin-top:6px"></div></div>
+    </section>
+
+    <!-- ASK -->
+    <section class="view" id="view-ask">
+      <div class="askhead"><h1>Ask your brain</h1><button class="btn small" id="newChat" title="Start over: forget the earlier questions">＋ New conversation</button></div>
+      <p class="sub">Answers come from your own documents, with numbered citations you can open. Ask follow-up questions: the conversation is remembered until you start a new one.</p>
+      <div id="welcome" class="card" style="display:none">
+        <h3 style="margin-top:0">Welcome 👋 Let's connect your knowledge</h3>
+        <div class="steps">
+          <div class="step"><b>1 · Add folders</b>Point at Documents, OneDrive, Dropbox, Google Drive or any folder.<br><a href="#" data-goto="sources" class="btn primary small" style="display:inline-block;margin-top:8px">📁 Add your first folder</a></div>
+          <div class="step"><b>2 · Let it index</b>Word, PowerPoint, PDF, Excel, notes and emails are read and linked automatically.</div>
+          <div class="step"><b>3 · Choose your AI</b>Claude (API key), Local AI on this laptop, or the Claude app on your subscription, for written answers, documents and decks.<br><a href="#" data-goto="sources">Choose →</a></div>
+          <div class="step"><b>4 · Ask &amp; create</b>Ask questions here, or produce Word briefs and PowerPoint decks on the Create tab.</div>
+        </div>
+      </div>
+      <div class="chat" id="chat"></div>
+      <div class="composer">
+        <div class="card">
+          <textarea id="question" class="grow" rows="1" placeholder="e.g. What did we recommend to Acme on pricing, and why?"></textarea>
+          <button class="btn primary" id="askBtn">Ask</button>
+        </div>
+        <div class="hint" style="text-align:center">Enter to send · Shift+Enter for a new line</div>
+      </div>
+    </section>
+
+    <!-- SEARCH -->
+    <section class="view" id="view-search">
+      <h1>Search</h1>
+      <p class="sub">Keyword search across everything, including text inside Office files and PDFs.</p>
+      <div class="card row">
+        <input type="text" id="searchBox" class="grow" placeholder="Search words or phrases…">
+        <select id="searchSource" style="width:auto"><option value="">All sources</option></select>
+        <select id="searchDays" style="width:auto" aria-label="Date"><option value="">Any time</option><option value="7">Past week</option><option value="30">Past month</option><option value="90">Past 3 months</option><option value="365">Past year</option></select>
+        <button class="btn primary" id="searchBtn">Search</button>
+      </div>
+      <div class="card" id="searchResults"><div class="empty">Type something to search.</div></div>
+    </section>
+
+    <!-- LIBRARY -->
+    <section class="view" id="view-library">
+      <h1>Library</h1>
+      <p class="sub">Everything the brain has read, newest first.</p>
+      <div class="card row">
+        <input type="text" id="libFilter" class="grow" placeholder="Filter by title…">
+        <select id="libSource" style="width:auto"><option value="">All sources</option></select>
+      </div>
+      <div class="card" style="padding:6px 10px"><table class="list"><thead><tr><th>Title</th><th>Type</th><th>Source</th><th>Indexed</th></tr></thead><tbody id="libBody"></tbody></table>
+        <div class="row" style="justify-content:center;padding:10px"><button class="btn small" id="libMore">Load more</button></div></div>
+    </section>
+
+    <!-- GRAPH -->
+    <section class="view" id="view-graph" style="max-width:none">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px">
+        <div><h1>Connections</h1><p class="sub" style="margin:0">How your knowledge links together. Drag to pan, scroll to zoom, click a dot to open it.</p></div>
+        <div class="row">
+          <label class="small" style="margin:0"><input type="checkbox" class="ekind" value="explicit" checked> links</label>
+          <label class="small" style="margin:0"><input type="checkbox" class="ekind" value="related" checked> similar topics</label>
+          <label class="small" style="margin:0"><input type="checkbox" class="ekind" value="entity" checked> shared people/companies</label>
+          <button class="btn small" id="graphReload">Refresh</button>
+        </div>
+      </div>
+      <div class="card" id="graphWrap"><canvas id="graph"></canvas>
+        <div class="legend"><span><i style="background:var(--e-explicit)"></i>link</span><span><i style="background:var(--e-related)"></i>similar</span><span><i style="background:var(--e-entity)"></i>shared entity</span></div>
+      </div>
+    </section>
+
+    <!-- CREATE -->
+    <section class="view" id="view-create">
+      <h1>Create</h1>
+      <p class="sub">Turn your knowledge into a document or a deck. Pick the reference documents to build from, then generate with AI or assemble a draft without it.</p>
+      <div class="card">
+        <div class="seg" id="createType"><button data-t="docx" class="on">📄 Word document</button><button data-t="deck">📊 PowerPoint deck</button><button data-t="md">📝 Markdown</button></div>
+        <label>Start from a template (optional)</label>
+        <div class="chips" id="presets"></div>
+        <label for="cTopic">Topic</label>
+        <input type="text" id="cTopic" placeholder="e.g. Acme pricing strategy – executive brief">
+        <label for="cInstr">Instructions (optional)</label>
+        <textarea id="cInstr" placeholder="Audience, tone, structure, length… e.g. 'Board audience, 2 pages, end with 3 recommendations'"></textarea>
+        <div id="slidesRow" style="display:none"><label for="cSlides">Number of slides</label><input type="number" id="cSlides" value="8" min="2" max="30" style="width:120px"></div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3 style="margin:0">Reference documents <span class="pill accent" id="refCount">0</span></h3><button class="btn small" id="refClear">Clear all</button></div>
+        <div class="chips" id="refChips" style="margin:10px 0"></div>
+        <div class="row">
+          <input type="text" id="refSearch" class="grow" placeholder="Search your brain for reference documents…" aria-label="Search for reference documents">
+          <button class="btn" id="refFind">Find</button>
+          <button class="btn" id="refSuggest" title="Search using the topic above">Suggest from topic</button>
+        </div>
+        <div id="refResults" style="margin-top:6px"></div>
+        <div class="collbar">
+          <select id="colSelect" aria-label="Load a collection"><option value="">📁 Load a collection…</option></select>
+          <button class="btn small" id="colSave">💾 Save as collection</button>
+          <button class="btn small danger" id="colDelete" hidden>Delete collection</button>
+        </div>
+        <div class="hint">Tip: you can also add documents with <b>+ Use in Create</b> from Search results, from any open document, or from an answer on the Ask page.</div>
+      </div>
+      <div class="card">
+        <div class="createbar">
+          <button class="btn primary" id="createAI">✨ Generate with AI</button>
+          <button class="btn" id="createNoAI">📄 Build without AI</button>
+          <span class="small muted" id="createNote"></span>
+        </div>
+        <div class="hint" id="aiHint">With AI, Claude writes from your references and cites them. Without AI, a draft is assembled from the most relevant passages. No API call, no cost.</div>
+      </div>
+      <div id="createResults"></div>
+    </section>
+
+    <!-- SOURCES -->
+    <section class="view" id="view-sources">
+      <h1>Sources &amp; settings</h1>
+      <p class="sub">Connect the places your knowledge lives. The brain re-checks them automatically and learns what changed.</p>
+
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3 style="margin:0">Connected sources</h3>
+          <button class="btn" id="syncAll">↻ Sync everything now</button></div>
+        <table class="list" style="margin-top:8px"><thead><tr><th>Name</th><th>Where</th><th>Docs</th><th>Last sync</th><th></th></tr></thead><tbody id="srcBody"></tbody></table>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">Add a source</h3>
+        <div class="row">
+          <div style="width:220px"><label>Type</label>
+            <select id="srcType">
+              <option value="folder">Folder on this computer</option>
+              <option value="imap">Email mailbox (Gmail, iCloud, Yahoo…)</option>
+              <option value="web">Web pages / online PDFs</option>
+              <option value="http_json">JSON API</option>
+              <option value="gdrive">Google Drive (API)</option>
+            </select></div>
+          <div style="width:200px"><label>Name</label><input type="text" id="srcName" placeholder="e.g. Clients"></div>
+          <div class="grow"><label id="srcTargetLabel">Folder path</label><input type="text" id="srcTarget" placeholder=""></div>
+          <div style="align-self:flex-end"><button class="btn" id="srcBrowse" type="button">📁 Browse…</button></div>
+        </div>
+        <div class="row" id="mailFields" style="display:none">
+          <div style="width:220px"><label>IMAP server</label><input type="text" id="mailHost" placeholder="filled in for common providers"></div>
+          <div style="width:220px"><label>App password</label><input type="password" id="mailPass" autocomplete="off"></div>
+          <div class="grow"><label>Folders (comma separated)</label><input type="text" id="mailFolders" value="INBOX"></div>
+          <div style="width:130px"><label>Days back</label><input type="number" id="mailDays" value="365" min="1"></div>
+        </div>
+        <div class="hint" id="srcHint"></div>
+        <div class="row" style="margin-top:12px"><button class="btn primary" id="srcAdd">Add &amp; sync</button></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0">AI engine</h3>
+        <p class="small muted" style="margin:0">Choose who writes answers, briefings, documents and decks. Search, connections and <b>Build without AI</b> never need AI.</p>
+        <div class="ai-modes" id="aiModes" role="radiogroup" aria-label="AI engine">
+          <label class="ai-mode"><input type="radio" name="aimode" value="claude"><div><b>☁️ Claude (API key)</b><span>Best quality. Pay per use with a key from console.anthropic.com.</span></div></label>
+          <label class="ai-mode"><input type="radio" name="aimode" value="local"><div><b>💻 Local AI</b><span>A free model on this computer (Ollama or LM Studio). Private and works offline, but slower and simpler writing.</span></div></label>
+          <label class="ai-mode"><input type="radio" name="aimode" value="claude_app"><div><b>💬 Claude app (your subscription)</b><span>No API key. The brain prepares each prompt with your sources; you paste it into Claude and paste the reply back.</span></div></label>
+          <label class="ai-mode"><input type="radio" name="aimode" value="off"><div><b>⏸️ Off</b><span>No AI at all. Everything else keeps working.</span></div></label>
+        </div>
+        <div class="ai-panel" id="aiClaude">
+        <p class="small muted" id="claudeState">Checking…</p>
+        <div class="row"><input type="password" id="claudeKey" class="grow" placeholder="sk-ant-…" autocomplete="off">
+          <button class="btn" id="claudeSave">Save key</button></div>
+        <div class="hint">Stored only on this computer in <code id="secretsPath">~/.secondbrain/secrets.env</code>. Get a key at console.anthropic.com. Search and connections work without it.</div>
+        </div>
+        <div class="ai-panel" id="aiLocal" hidden>
+          <div class="row">
+            <select id="localProvider" style="width:auto" aria-label="Local AI app"><option value="ollama">Ollama</option><option value="openai">LM Studio / other (OpenAI-compatible)</option></select>
+            <input type="text" id="localUrl" class="grow" placeholder="http://localhost:11434" aria-label="Address" autocomplete="off">
+          </div>
+          <div class="row" style="margin-top:8px">
+            <select id="localModel" class="grow" aria-label="Model"><option value="">Automatic (first installed model)</option></select>
+            <button class="btn small" id="localRefresh">↻ Find models</button>
+            <button class="btn small primary" id="localTest">Test</button>
+          </div>
+          <div class="row" style="margin-top:8px" id="pullRow">
+            <input type="text" id="pullName" class="grow" list="pullSuggest" placeholder="Download a model, e.g. qwen2.5:7b" aria-label="Model to download" autocomplete="off">
+            <datalist id="pullSuggest"><option value="qwen2.5:7b"><option value="qwen3:8b"><option value="gemma3:12b"><option value="mistral:7b"><option value="phi3:mini"></datalist>
+            <button class="btn small" id="pullGo">⬇ Download (Ollama)</button>
+          </div>
+          <p class="small" id="localState" style="margin:8px 0 0"></p>
+          <details class="small" style="margin-top:8px"><summary><b>How to set up local AI (10 minutes, one time)</b></summary>
+            <ol style="padding-left:18px;margin:8px 0">
+              <li>Install <b>Ollama</b> from <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a> (Mac or Windows) and open it.</li>
+              <li>Download a model: open Terminal (Mac) or Command Prompt (Windows) and run <code>ollama pull llama3.1:8b</code> (about 5 GB). Good alternatives: <code>qwen3:8b</code>, <code>gemma3:12b</code> (needs 16 GB RAM or more).</li>
+              <li>Press <b>↻ Find models</b>, pick one, then <b>Test</b>.</li>
+            </ol>
+            Prefer an app with windows and buttons? Use <b>LM Studio</b> (lmstudio.ai): download a model, open the <i>Developer</i> tab, start the server, and choose “LM Studio” above.
+            Local models are smaller than Claude: expect simpler writing and occasional citation slips, and a few minutes per document on a laptop.
+          </details>
+        </div>
+        <div class="ai-panel" id="aiApp" hidden>
+          <p class="small" style="margin:0 0 8px">Use Claude on your paid subscription (Pro, Max or Team), no API key. When you press an AI button,
+            the brain prepares a prompt with your instructions and the right passages from your documents. <b>Copy</b> it, paste it into Claude
+            (claude.ai or the Claude app), then paste Claude's reply back here: documents and decks are built from it and kept in your Library.</p>
+          <div class="row" id="desktopRow" style="margin-top:4px"><button class="btn" id="desktopConnect">🔌 Connect Claude Desktop</button>
+            <span class="small muted grow" id="desktopState">Even better: let the Claude desktop app search your brain and save documents directly.</span></div>
+        </div>
+        <div class="row" style="margin-top:14px"><button class="btn" id="enrichBtn">🧩 Summarise &amp; connect documents with AI</button>
+          <span class="small muted">Adds summaries, tags and people/company links with your chosen AI: Claude (API credits) or Local AI. 20 documents per click.</span></div>
+      </div>
+
+      <div class="card small muted" id="paths"></div>
+    </section>
+  </main>
+</div>
+
+<div class="drawer" id="drawer">
+  <header><h2 id="dTitle"></h2><button class="btn small" id="dClose">✕</button></header>
+  <div class="body" id="dBody"></div>
+</div>
+
+<div class="modal" id="rememberModal">
+  <div class="card">
+    <h3 style="margin-top:0">📝 Remember something</h3>
+    <p class="small muted" style="margin-top:0">A fact, a decision, meeting notes… it becomes searchable and gets linked. Use [[Title]] to link to a document.</p>
+    <label>Title (optional)</label><input type="text" id="remTitle">
+    <label>Note</label><textarea id="remText" rows="6"></textarea>
+    <label>Tags (comma separated, optional)</label><input type="text" id="remTags">
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="remCancel">Cancel</button><button class="btn primary" id="remSave">Save to brain</button></div>
+  </div>
+</div>
+<div class="modal palette" id="palette" role="dialog" aria-modal="true" aria-label="Quick find">
+  <div class="card">
+    <input type="text" id="palInput" placeholder="Search documents or go to a page… type a question to ask it" autocomplete="off" aria-label="Quick find">
+    <div id="palList" role="listbox"></div>
+    <div class="pal-foot"><kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>Enter</kbd> open · <kbd>Esc</kbd> close</div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+let STATUS = null;
+
+// ---------- API ----------
+async function api(path, body) {
+  const headers = { "Content-Type": "application/json" };
+  const token = store.get("brainToken");
+  if (token) headers.Authorization = "Bearer " + token;
+  const res = await fetch(path, body === undefined ? { headers } : { method: "POST", headers, body: JSON.stringify(body) });
+  if (res.status === 401) {
+    const t = prompt("This brain is protected. Enter the API token (BRAIN_API_TOKEN):");
+    if (t) { store.set("brainToken", t); return api(path, body); }
+    throw new Error("unauthorised");
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+const withToken = url => { const t = store.get("brainToken"); return t ? url + (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(t) : url; };
+function toast(msg, ms = 3200) { const t = $("#toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", ms); }
+const ago = ts => { if (!ts) return "never"; const s = Date.now() / 1000 - ts; if (s < 60) return "just now"; if (s < 3600) return Math.floor(s / 60) + " min ago"; if (s < 86400) return Math.floor(s / 3600) + " h ago"; return new Date(ts * 1000).toLocaleDateString(); };
+const kindIcon = k => ({ note: "📝", pdf: "📕", document: "📄", presentation: "📊", spreadsheet: "📈", data: "🗂️", web: "🌐", email: "✉️", code: "💻" }[k] || "📁");
+
+// ---------- markdown (small, safe: escapes first) ----------
+function md(src) {
+  const lines = esc(src).split("\n"); let out = [], list = null, table = [];
+  const inline = s => s.replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[^*])\*([^*]+)\*/g, "$1<i>$2</i>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[(\d+)\]/g, '<span class="cite" data-n="$1">$1</span>');
+  const flushList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  const flushTable = () => { if (table.length) { const rows = table.filter(r => !/^[\s|:-]+$/.test(r));
+    out.push("<table>" + rows.map((r, i) => "<tr>" + r.replace(/^\||\|$/g, "").split("|").map(c => i ? `<td>${inline(c.trim())}</td>` : `<th>${inline(c.trim())}</th>`).join("") + "</tr>").join("") + "</table>"); table = []; } };
+  for (const line of lines) {
+    if (/^\s*\|.*\|\s*$/.test(line)) { flushList(); table.push(line.trim()); continue; } flushTable();
+    let m;
+    if ((m = line.match(/^(#{1,4})\s+(.*)/))) { flushList(); out.push(`<h${Math.min(m[1].length, 3)}>${inline(m[2])}</h${Math.min(m[1].length, 3)}>`); }
+    else if ((m = line.match(/^\s*[-*•]\s+(.*)/))) { if (list !== "ul") { flushList(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) { if (list !== "ol") { flushList(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if (!line.trim()) flushList();
+    else { flushList(); out.push(`<p>${inline(line)}</p>`); }
+  }
+  flushList(); flushTable(); return out.join("");
+}
+
+// ---------- navigation ----------
+function show(view) {
+  $$(".nav button[data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === view));
+  $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + view));
+  store.set("brainView", view);
+  if (view === "library") loadLibrary(true);
+  if (view === "graph") loadGraph();
+  if (view === "sources") renderSources();
+}
+$$(".nav button[data-view]").forEach(b => b.onclick = () => show(b.dataset.view));
+document.addEventListener("click", e => { const g = e.target.closest("[data-goto]"); if (g) { e.preventDefault(); show(g.dataset.goto); } });
+
+// ---------- status ----------
+async function refreshStatus() {
+  try { STATUS = await api("/status"); } catch (e) { $("#meta").textContent = "Offline: " + e.message; return; }
+  const s = STATUS.stats, sync = STATUS.sync;
+  $("#meta").innerHTML = `<div><span class="dot ${sync.running ? "busy" : "good"}"></span>${sync.running ? "Syncing…" : "Up to date"}</div>
+    <div>${s.documents} documents · ${s.links} connections</div>
+    <div><span class="dot ${aiStatus(STATUS).ok ? "good" : "warn"}"></span>${esc(aiStatus(STATUS).text)}</div>`;
+  $("#syncBanner").style.display = sync.running ? "block" : "none";
+  if (sync.running) {
+    const of = sync.total ? `Source ${Math.min(sync.index + 1, sync.total)} of ${sync.total}` : "Syncing";
+    const detail = sync.source ? ` · ${sync.source} · ${sync.seen || 0} files checked${sync.added ? ", " + sync.added + " new" : ""}` : " your sources…";
+    $("#syncText").textContent = sync.stopping ? "Stopping after the current file…" : of + detail;
+    $("#syncBar").style.width = (sync.total ? Math.max(4, Math.round(100 * sync.index / sync.total)) : 4) + "%";
+    $("#syncStop").disabled = !!sync.stopping;
+  } else { $("#syncText").textContent = ""; }
+  $("#welcome").style.display = s.documents === 0 ? "block" : "none";
+  const opts = '<option value="">All sources</option>' + STATUS.configured_sources.map(x => `<option>${esc(x.name)}</option>`).join("");
+  for (const id of ["#searchSource", "#libSource"]) { const el = $(id), v = el.value; el.innerHTML = opts; el.value = v; }
+  if ($("#view-sources").classList.contains("active")) renderSources();
+  if (refreshStatus._wasRunning && !sync.running) { toast("Sync finished"); if ($("#view-library").classList.contains("active")) loadLibrary(true); }
+  refreshStatus._wasRunning = sync.running;
+}
+$("#syncStop").onclick = async () => { $("#syncStop").disabled = true; await api("/sync/stop", {}).catch(e => toast(e.message)); refreshStatus(); };
+setInterval(refreshStatus, 3000);
+
+// ---------- drawer (document view) ----------
+async function openDoc(id) {
+  const d = await api("/documents/" + id).catch(e => toast(e.message));
+  if (!d) return;
+  $("#dTitle").textContent = kindIcon(d.kind) + " " + d.title;
+  const isFile = d.uri.startsWith("file:");
+  const rel = d.related.length ? d.related.map(r => `<div class="rel" data-doc="${r.doc_id}"><span class="pill ${r.kind === "explicit" || r.kind === "attachment" ? "accent" : ""}">${r.kind === "explicit" ? "link" : r.kind === "attachment" ? "attachment" : r.kind === "related" ? "similar" : "shared"}</span><span class="t">${esc(r.title)}</span><span class="muted small">${esc(r.label || "")}</span></div>`).join("") : '<p class="muted small">No connections yet.</p>';
+  $("#dBody").innerHTML = `
+    <div class="row small muted" style="margin-bottom:10px"><span class="pill">${esc(d.kind)}</span><span class="pill">${esc(d.source)}</span>${d.date ? `<span class="datepill">dated ${fmtDate(d.date)} ·</span>` : ""}<span>indexed ${ago(d.indexed_at)}</span>${d.revisions.length ? `<span>· ${d.revisions.length} earlier version(s)</span>` : ""}</div>
+    <div class="row" style="margin-bottom:14px">${isFile ? `<a class="btn small" href="${withToken(`/documents/${d.id}/file`)}" target="_blank">Open original</a><a class="btn small" href="${withToken(`/documents/${d.id}/file?download=1`)}">Download</a>` : d.uri.startsWith("http") ? `<a class="btn small" href="${esc(d.uri)}" target="_blank" rel="noopener">Open web page</a>` : ""}
+      <button class="btn small" id="dAsk">Ask about this</button><button class="btn small" data-ref="${d.id}" data-ref-title="${esc(d.title)}">+ Use in Create</button></div>
+    ${d.summary ? `<h4 style="margin:6px 0">Summary</h4><p>${esc(d.summary)}</p>` : ""}
+    ${d.tags.length ? `<div class="row" style="margin-bottom:10px">${d.tags.map(t => `<span class="pill accent">${esc(t)}</span>`).join("")}</div>` : ""}
+    <h4 style="margin:14px 0 4px">Connected documents</h4>${rel}
+    <h4 style="margin:16px 0 6px">Content</h4><pre>${esc(d.text.slice(0, 20000))}${d.text.length > 20000 ? "\n…" : ""}</pre>
+    <p class="small muted" style="word-break:break-all">${esc(d.uri)}</p>`;
+  $("#dAsk").onclick = () => { closeDoc(); show("ask"); $("#question").value = `Regarding "${d.title}": `; $("#question").focus(); };
+  $("#drawer").classList.add("open");
+}
+const closeDoc = () => $("#drawer").classList.remove("open");
+$("#dClose").onclick = closeDoc;
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeDoc(); $("#rememberModal").classList.remove("open"); } });
+document.addEventListener("click", e => { const r = e.target.closest("[data-doc]"); if (r) openDoc(r.dataset.doc); });
+
+// ---------- ask ----------
+async function ask() {
+  const q = $("#question").value.trim(); if (!q) return;
+  $("#question").value = ""; autosize();
+  const chat = $("#chat");
+  chat.insertAdjacentHTML("beforeend", `<div class="msg user">${esc(q)}</div>`);
+  const bot = document.createElement("div"); bot.className = "msg bot"; bot.innerHTML = '<span class="spinner"></span> <span class="muted">Thinking through your knowledge…</span>';
+  chat.appendChild(bot); bot.scrollIntoView({ behavior: "smooth", block: "end" });
+  $("#askBtn").disabled = true;
+  try {
+    const r = await api("/ask", { question: q, history: CHAT.slice(-3) });
+    if (r.mode === "handoff") { handoffAnswer(bot, q, r); $("#askBtn").disabled = false; return; }
+    if (r.mode === "claude" || r.mode === "local") CHAT.push({ q, a: r.answer });
+    const bySrc = Object.fromEntries(r.sources.map(s => [s.n, s]));
+    bot.innerHTML = (r.mode === "extractive" ? `<p class="small" style="color:var(--warn)">${esc(r.reason || "AI isn't available")}. Here are the most relevant passages. <a href="#" data-goto="sources">Choose an AI</a> for written answers.</p>` : "")
+      + (r.mode === "local" ? `<p class="small muted" style="margin-top:0">💻 Written by ${esc(r.ai)} on this computer</p>` : "")
+      + `<div class="md">${md(r.answer)}</div>`
+      + (r.sources.length ? `<div class="sources">${r.sources.map(s => `<span class="srcchip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div>` : "");
+    $$(".cite", bot).forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } });
+    if (r.mode !== "empty") bot.insertAdjacentHTML("beforeend", answerActions(q, r));
+  } catch (e) { bot.innerHTML = `<span style="color:var(--bad)">Something went wrong: ${esc(e.message)}</span>`; }
+  $("#askBtn").disabled = false;
+}
+const autosize = () => { const t = $("#question"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 200) + "px"; };
+$("#question").addEventListener("input", autosize);
+$("#question").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } });
+$("#askBtn").onclick = ask;
+
+// ---------- search ----------
+async function doSearch() {
+  const q = $("#searchBox").value.trim(); if (!q) return;
+  const box = $("#searchResults"); box.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+  const src = $("#searchSource").value;
+  try {
+    const days = $("#searchDays").value;
+    const hits = await api(`/search?q=${encodeURIComponent(q)}&limit=25${src ? "&source=" + encodeURIComponent(src) : ""}${days ? "&days=" + days : ""}`);
+    const words = q.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+    const hl = s => { let h = esc(s); for (const w of words) h = h.replace(new RegExp(`(${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\w*)`, "gi"), "<mark>$1</mark>"); return h; };
+    box.innerHTML = hits.length ? hits.map(h => {
+      const t = h.text.replace(/\s+/g, " "); const i = Math.max(0, t.toLowerCase().indexOf(words[0] || "") - 80);
+      return `<div class="result" data-doc="${h.doc_id}"><div class="rtitle">${esc(h.title)}</div><div class="snippet">${i ? "…" : ""}${hl(t.slice(i, i + 260))}…</div><div class="row small muted"><span>${esc(h.source)}</span>${h.date ? `<span class="datepill">· ${fmtDate(h.date)}</span>` : ""}<button class="btn small ref-add" data-ref="${h.doc_id}" data-ref-title="${esc(h.title)}">+ Use in Create</button></div></div>`;
+    }).join("") : '<div class="empty">No matches. Try different words, or check the source is synced.</div>';
+  } catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+$("#searchBtn").onclick = doSearch;
+$("#searchBox").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+
+// ---------- library ----------
+let libOffset = 0, libDocs = [];
+async function loadLibrary(reset) {
+  if (reset) { libOffset = 0; libDocs = []; }
+  const src = $("#libSource").value;
+  const page = await api(`/documents?limit=200&offset=${libOffset}${src ? "&source=" + encodeURIComponent(src) : ""}${LIB_KIND ? "&kind=" + encodeURIComponent(LIB_KIND) : ""}`).catch(() => []);
+  libDocs = libDocs.concat(page); libOffset += page.length;
+  $("#libMore").style.display = page.length === 200 ? "" : "none";
+  renderLibrary();
+}
+function renderLibrary() {
+  const f = $("#libFilter").value.toLowerCase();
+  const rows = libDocs.filter(d => (!f || d.title.toLowerCase().includes(f)) && (!LIB_KIND || d.kind === LIB_KIND));
+  $("#libBody").innerHTML = rows.length ? rows.map(d => `<tr class="click" data-doc="${d.id}"><td>${kindIcon(d.kind)} ${esc(d.title)}${d.summary ? `<div class="small muted">${esc(d.summary.slice(0, 140))}</div>` : ""}</td><td class="small">${esc(d.kind)}</td><td class="small">${esc(d.source)}</td><td class="small muted">${ago(d.indexed_at)}</td></tr>`).join("")
+    : '<tr><td colspan="4"><div class="empty">Nothing here yet. Add a source to get started.</div></td></tr>';
+}
+$("#libFilter").addEventListener("input", renderLibrary);
+$("#libSource").addEventListener("change", () => loadLibrary(true));
+$("#libMore").onclick = () => loadLibrary(false);
+
+// ---------- create: see UI extensions below ----------
+
+// ---------- sources & settings ----------
+const HINTS = {
+  imap: ["Email address", "you@gmail.com", "Reads emails and their attachments (PDF, Word, Excel, PowerPoint…) without marking anything as read. Use an app password, not your normal one: Gmail → myaccount.google.com/apppasswords (needs 2-step verification); iCloud → appleid.apple.com → App-Specific Passwords; Yahoo → Account security → Generate app password. Gmail folders: INBOX, [Gmail]/Sent Mail. Outlook / Microsoft 365: save emails into a folder and add that folder instead."],
+  folder: ["Folder path", "Windows: C:\\Users\\you\\OneDrive - Company\\Clients   ·   Mac: /Users/you/Library/CloudStorage/OneDrive-Company/Clients", "Any folder works: Documents, Desktop, an Obsidian vault, a USB/NAS drive, or cloud folders synced by OneDrive, SharePoint, Dropbox, Google Drive for desktop, iCloud or Box. Tip: in Explorer, Shift+right-click a folder → “Copy as path”; on Mac, right-click → hold Option → “Copy … as Pathname”."],
+  web: ["URLs", "https://example.com/report.pdf, https://example.com/article", "One or more web pages or online PDFs, separated by commas or spaces. They are re-checked on every sync."],
+  http_json: ["API URL", "https://api.example.com/v1/notes", "For headers, tokens and field mapping, edit the config file (see brain.example.toml)."],
+  gdrive: ["Drive folder ID", "1AbCdEf… (from the folder's URL)", "Needs a Google service-account key saved as ~/.secondbrain/gdrive-sa.json and pip install google-api-python-client google-auth. Simpler alternative: install Google Drive for desktop and add its folder as a normal folder."],
+};
+function srcHint() { const t = $("#srcType").value, h = HINTS[t]; $("#srcTargetLabel").textContent = h[0]; $("#srcTarget").placeholder = h[1]; $("#srcHint").textContent = h[2]; $("#mailFields").style.display = t === "imap" ? "" : "none"; }
+const MAIL_HOSTS = { "gmail.com": "imap.gmail.com", "googlemail.com": "imap.gmail.com", "icloud.com": "imap.mail.me.com", "me.com": "imap.mail.me.com", "yahoo.com": "imap.mail.yahoo.com", "fastmail.com": "imap.fastmail.com", "zoho.com": "imap.zoho.com" };
+$("#srcTarget").addEventListener("input", () => {
+  if ($("#srcType").value !== "imap") return;
+  const domain = ($("#srcTarget").value.split("@")[1] || "").toLowerCase();
+  if (MAIL_HOSTS[domain] && !$("#mailHost").dataset.touched) $("#mailHost").value = MAIL_HOSTS[domain];
+  if (/gmail|googlemail/.test(domain) && $("#mailFolders").value === "INBOX") $("#mailFolders").value = "INBOX, [Gmail]/Sent Mail";
+});
+$("#mailHost").addEventListener("input", () => { $("#mailHost").dataset.touched = "1"; });
+$("#srcType").onchange = srcHint; srcHint();
+const _srcHintBase = srcHint;
+srcHint = function () { _srcHintBase(); $("#srcBrowse").style.display = $("#srcType").value === "folder" ? "" : "none"; };
+$("#srcType").onchange = srcHint; srcHint();
+$("#srcBrowse").onclick = async () => {
+  const b = $("#srcBrowse"); b.disabled = true; b.textContent = "Choose a folder in the window that opened…";
+  try {
+    const r = await fetch("/pick-folder", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const j = await r.json();
+    if (j.path) {
+      $("#srcTarget").value = j.path;
+      if (!$("#srcName").value.trim()) $("#srcName").value = j.path.split(/[\\/]/).filter(Boolean).pop().replace(/[^A-Za-z0-9 _.\-]/g, "").slice(0, 60);
+    } else if (j.error) { alert(j.error); }
+  } catch (e) { alert("Couldn't open the folder picker. Paste the folder path instead."); }
+  b.disabled = false; b.textContent = "📁 Browse…";
+};
+
+// Group identical problems ("cloud-only file…", "Invalid argument"…) and let people expand the full list.
+function errorSummary(errs) {
+  const reason = e => { const s = String(e), i = s.lastIndexOf(": "); return (i >= 0 ? s.slice(i + 2) : s).replace(/^\[Errno \d+\]\s*/, "").slice(0, 110); };
+  const pretty = e => { let s = String(e).replace(/^file:\/\/\//, ""); try { s = decodeURIComponent(s); } catch (_) {} return s; };
+  const groups = {};
+  errs.forEach(e => { const r = /cloud-only/.test(e) ? "Cloud-only files couldn't be downloaded. Make sure OneDrive/Drive is running, or set the folder to “Always keep on this device”."
+    : /password|encrypt/i.test(e) ? "Password-protected files were skipped."
+    : /No such file|not found/i.test(e) ? "Something wasn't found. Check the folder or file still exists."
+    : reason(e); groups[r] = (groups[r] || 0) + 1; });
+  const top = Object.entries(groups).sort((a, b) => b[1] - a[1]);
+  const rows = top.slice(0, 3).map(([r, n]) => `<div>${n > 1 ? n + " × " : ""}${esc(r)}</div>`).join("");
+  const all = errs.slice(0, 200).map(e => `<div class="small muted" style="word-break:break-all">${esc(pretty(e))}</div>`).join("");
+  return `<div style="color:var(--warn);margin-top:4px">⚠ ${errs.length} file${errs.length > 1 ? "s" : ""} couldn't be read${rows}</div>
+    <details style="margin-top:4px"><summary class="small muted" style="cursor:pointer">Show all</summary>${all}</details>`;
+}
+function renderSources() {
+  if (!STATUS) return;
+  const byName = Object.fromEntries(STATUS.sources.map(s => [s.name, s]));
+  $("#srcBody").innerHTML = STATUS.configured_sources.map(c => {
+    const s = byName[c.name] || {}; const errs = (s.last_stats && s.last_stats.errors) || [];
+    const where = c.path || (c.urls || []).join(", ") || c.url || c.folder_id || (c.username ? `${c.username} · ${(c.folders || []).join(", ")} · last ${c.since_days || 365} days` : "");
+    const builtIn = c.name === "_outputs";
+    return `<tr><td><b>${esc(builtIn ? "Created by the brain" : c.name)}</b><div class="small muted">${esc(c.type)}</div></td>
+      <td class="small" style="word-break:break-all">${esc(where)}${errs.length ? errorSummary(errs) : ""}</td>
+      <td>${s.documents ?? 0}</td><td class="small muted">${ago(s.last_sync)}</td>
+      <td style="white-space:nowrap"><button class="btn small" data-sync="${esc(c.name)}">Sync</button>${builtIn ? "" : ` <button class="btn small danger" data-remove="${esc(c.name)}">Remove</button>`}</td></tr>`;
+  }).join("") || '<tr><td colspan="5"><div class="empty">No sources yet. Add your first folder below.</div></td></tr>';
+  $("#claudeState").innerHTML = STATUS.claude_configured ? '<span class="dot good"></span>Connected: answers, documents and decks are written by Claude (' + esc(STATUS.model) + ")."
+    : '<span class="dot warn"></span>Not connected: you can still search and browse. Add a key for written answers, documents and decks.';
+  $("#secretsPath").textContent = STATUS.db.replace(/brain\.db$/, "secrets.env");
+  $("#paths").innerHTML = `Config file: <code>${esc(STATUS.config_file)}</code><br>Database: <code>${esc(STATUS.db)}</code><br>Created files: <code>${esc(STATUS.outputs)}</code>`;
+}
+document.addEventListener("click", async e => {
+  const s = e.target.closest("[data-sync]"), r = e.target.closest("[data-remove]");
+  if (s) { const res = await api("/sync", { source: s.dataset.sync }); toast(res.started ? "Sync started" : res.reason); refreshStatus(); }
+  if (r && confirm(`Remove source "${r.dataset.remove}"? Its documents will be removed from the brain on the next sync. Your files are not touched.`)) {
+    try { await api("/sources/remove", { name: r.dataset.remove }); toast("Removed"); await api("/sync", {}); refreshStatus(); } catch (err) { toast(err.message); }
+  }
+});
+$("#syncAll").onclick = async () => { const r = await api("/sync", {}); toast(r.started ? "Sync started" : r.reason); refreshStatus(); };
+$("#srcAdd").onclick = async () => {
+  const body = { type: $("#srcType").value, name: $("#srcName").value.trim(), target: $("#srcTarget").value.trim().replace(/^"|"$/g, "") };
+  if (body.type === "imap") Object.assign(body, { host: $("#mailHost").value.trim(), password: $("#mailPass").value, folders: $("#mailFolders").value, since_days: +$("#mailDays").value || 365 });
+  if (!body.name || !body.target) { toast("Fill in a name and a location"); return; }
+  const btn = $("#srcAdd"); btn.disabled = true;
+  if (body.type === "imap") btn.textContent = "Checking sign-in…";
+  try { await api("/sources", body); toast(`Added "${body.name}", syncing now`); $("#srcName").value = $("#srcTarget").value = $("#mailPass").value = ""; refreshStatus(); }
+  catch (e) { toast(e.message, 8000); }
+  btn.disabled = false; btn.textContent = "Add & sync";
+};
+$("#claudeSave").onclick = async () => {
+  const key = $("#claudeKey").value.trim(); if (!key) return;
+  try { await api("/settings/claude-key", { key }); $("#claudeKey").value = ""; toast("Key saved on this computer"); refreshStatus(); } catch (e) { toast(e.message); }
+};
+$("#enrichBtn").onclick = async () => {
+  const b = $("#enrichBtn"); b.disabled = true; b.textContent = "Working…";
+  try { const r = await api("/enrich", { limit: 20 }); toast(r.errors.length ? r.errors[0] : `Enriched ${r.enriched} documents`); } catch (e) { toast(e.message); }
+  b.disabled = false; b.textContent = "🧩 Summarise & connect documents with AI";
+};
+
+// ---------- remember ----------
+$("#rememberBtn").onclick = () => { $("#rememberModal").classList.add("open"); $("#remText").focus(); };
+$("#remCancel").onclick = () => $("#rememberModal").classList.remove("open");
+$("#remSave").onclick = async () => {
+  const text = $("#remText").value.trim(); if (!text) return;
+  const tags = $("#remTags").value.split(",").map(t => t.trim()).filter(Boolean);
+  try { await api("/remember", { text, title: $("#remTitle").value.trim() || null, tags }); $("#rememberModal").classList.remove("open"); $("#remText").value = $("#remTitle").value = $("#remTags").value = ""; toast("Saved. Your brain will remember it."); refreshStatus(); }
+  catch (e) { toast(e.message); }
+};
+
+// ---------- graph (force-directed, canvas, no libraries) ----------
+const G = { nodes: [], edges: [], scale: 1, ox: 0, oy: 0, running: false, hover: null, drag: null };
+const PALETTE = ["#5b5bd6", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#ec4899", "#84cc16", "#64748b"];
+async function loadGraph() {
+  const data = await api("/graph").catch(() => null); if (!data) return;
+  const kinds = new Set($$(".ekind").filter(c => c.checked).map(c => c.value));
+  const cv = $("#graph"), W = cv.clientWidth, H = cv.clientHeight;
+  const sources = [...new Set(data.nodes.map(n => n.source))];
+  const idx = new Map(); const degree = {};
+  const edges = data.edges.filter(e => kinds.has(e.kind === "attachment" ? "explicit" : e.kind));
+  edges.forEach(e => { degree[e.src] = (degree[e.src] || 0) + 1; degree[e.dst] = (degree[e.dst] || 0) + 1; });
+  let nodes = data.nodes;
+  if (nodes.length > 600) nodes = nodes.filter(n => degree[n.id]).slice(0, 600);
+  G.nodes = nodes.map((n, i) => { const a = i * 2.399963, r = 12 * Math.sqrt(i + 1); idx.set(n.id, i);
+    return { ...n, x: W / 2 + r * Math.cos(a), y: H / 2 + r * Math.sin(a), vx: 0, vy: 0, deg: degree[n.id] || 0, color: PALETTE[sources.indexOf(n.source) % PALETTE.length] }; });
+  G.edges = edges.filter(e => idx.has(e.src) && idx.has(e.dst)).map(e => ({ a: idx.get(e.src), b: idx.get(e.dst), kind: e.kind }));
+  G.scale = 1; G.ox = 0; G.oy = 0; G.alpha = 1;
+  if (!G.running) { G.running = true; requestAnimationFrame(tick); }
+}
+$("#graphReload").onclick = loadGraph; $$(".ekind").forEach(c => c.onchange = loadGraph);
+function tick() {
+  const cv = $("#graph"); if (!cv.isConnected || !$("#view-graph").classList.contains("active")) { G.running = false; return; }
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+  const N = G.nodes, a = G.alpha;
+  if (a > 0.01) {
+    for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
+      const p = N[i], q = N[j]; let dx = p.x - q.x, dy = p.y - q.y, d2 = dx * dx + dy * dy + 0.01;
+      if (d2 > 90000) continue; const f = 900 / d2 * a; p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f; }
+    for (const e of G.edges) { const p = N[e.a], q = N[e.b]; const dx = q.x - p.x, dy = q.y - p.y, d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const k = (d - (e.kind === "explicit" ? 60 : 90)) * 0.02 * a; p.vx += dx / d * k; p.vy += dy / d * k; q.vx -= dx / d * k; q.vy -= dy / d * k; }
+    for (const n of N) { n.vx += (W / 2 - n.x) * 0.002 * a; n.vy += (H / 2 - n.y) * 0.002 * a; if (n !== G.drag) { n.x += n.vx; n.y += n.vy; } n.vx *= 0.6; n.vy *= 0.6; }
+    G.alpha *= 0.992;
+  }
+  const ctx = cv.getContext("2d"), css = getComputedStyle(document.documentElement);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  ctx.translate(G.ox, G.oy); ctx.scale(G.scale, G.scale);
+  const ec = { explicit: css.getPropertyValue("--e-explicit").trim(), related: css.getPropertyValue("--e-related").trim(), entity: css.getPropertyValue("--e-entity").trim() };
+  const textColor = css.getPropertyValue("--text").trim();
+  for (const e of G.edges) { const p = N[e.a], q = N[e.b]; const hot = G.hover && (p === G.hover || q === G.hover);
+    ctx.strokeStyle = ec[e.kind] || ec.explicit; ctx.globalAlpha = hot ? 1 : G.hover ? 0.12 : 0.55; ctx.lineWidth = (e.kind === "explicit" ? 1.8 : 1) / G.scale;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); }
+  ctx.globalAlpha = 1; ctx.font = `${12 / G.scale}px system-ui`; ctx.fillStyle = textColor;
+  for (const n of N) { const r = 4 + Math.min(10, Math.sqrt(n.deg) * 2);
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 7); ctx.fillStyle = n.color; ctx.globalAlpha = G.hover && G.hover !== n ? 0.5 : 1; ctx.fill();
+    if (n === G.hover || n.deg >= 3 || N.length < 40) { ctx.fillStyle = textColor; ctx.globalAlpha = 1; ctx.fillText(n.title.slice(0, 40), n.x + r + 3, n.y + 4); } }
+  requestAnimationFrame(tick);
+}
+(function graphInput() {
+  const cv = $("#graph"); let pan = null, moved = false;
+  const pt = e => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left - G.ox) / G.scale, y: (e.clientY - r.top - G.oy) / G.scale }; };
+  const hit = p => G.nodes.find(n => (n.x - p.x) ** 2 + (n.y - p.y) ** 2 < (10 / G.scale + 6) ** 2);
+  cv.addEventListener("mousedown", e => { moved = false; const n = hit(pt(e)); if (n) { G.drag = n; G.alpha = Math.max(G.alpha, 0.3); } else pan = { x: e.clientX - G.ox, y: e.clientY - G.oy }; });
+  window.addEventListener("mousemove", e => { if (G.drag) { const p = pt(e); G.drag.x = p.x; G.drag.y = p.y; moved = true; }
+    else if (pan) { G.ox = e.clientX - pan.x; G.oy = e.clientY - pan.y; moved = true; }
+    else if (e.target === cv) { G.hover = hit(pt(e)) || null; cv.style.cursor = G.hover ? "pointer" : "grab"; } });
+  window.addEventListener("mouseup", () => { if (G.drag && !moved) openDoc(G.drag.id); G.drag = null; pan = null; });
+  cv.addEventListener("wheel", e => { e.preventDefault(); const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+    const k = Math.exp(-e.deltaY * 0.0015), s = Math.min(4, Math.max(0.2, G.scale * k)); G.ox = mx - (mx - G.ox) * s / G.scale; G.oy = my - (my - G.oy) * s / G.scale; G.scale = s; }, { passive: false });
+})();
+
+
+// Data adapter: the server app talks to the local REST API.
+const PREF = store;
+const DATA = {
+  search: (q, limit = 8, days) => api(`/search?q=${encodeURIComponent(q)}&limit=${limit}${days ? "&days=" + days : ""}`),
+  recent: n => api(`/documents?limit=${n}`).then(ds => ds.map(d => ({ id: d.id, title: d.title, kind: d.kind, at: d.indexed_at, date: d.date }))),
+  overview: async () => {
+    const s = await api("/status");
+    return { documents: s.stats.documents, links: s.stats.links, byKind: s.stats.by_kind || {}, claude: s.claude_configured, ai: aiStatus(s),
+      sources: s.sources.map(x => ({ name: ({ _outputs: "Created by the brain", _answers: "Saved answers" })[x.name] || x.name, documents: x.documents, at: x.last_sync, errors: (x.last_stats?.errors || []).length })) };
+  },
+  create: (type, body) => api(type === "deck" ? "/create/deck" : "/create/document", body),
+  remember: (text, title, tags) => api("/remember", { text, title, tags }),
+  digest: (days, useAi) => useAi ? api("/digest", { days, use_ai: true }) : api(`/digest?days=${days}`),
+  collections: () => api("/collections"),
+  saveCollection: (name, ids) => api("/collections", { name, doc_ids: ids }),
+  deleteCollection: name => api("/collections/remove", { name }),
+  fileName: r => r.path.split(/[\\/]/).pop(),
+  downloadUrl: r => withToken(r.download + "?download=1"),
+};
+
+// ===================== UI extensions: home, quick find, create with references, answer actions =====================
+const KIND_LABEL = { email: "Emails", pdf: "PDFs", document: "Word docs", presentation: "Decks", spreadsheet: "Spreadsheets",
+  note: "Notes", data: "Data", web: "Web pages", code: "Code", file: "Files" };
+let LIB_KIND = "";
+
+// ---- theme toggle (auto → light → dark)
+function applyTheme(t) {
+  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  $("#themeBtn").textContent = t === "dark" ? "🌙" : t === "light" ? "☀️" : "🌓";
+  $("#themeBtn").title = "Theme: " + (t || "match system");
+}
+$("#themeBtn").onclick = () => { const order = ["", "light", "dark"]; const next = order[(order.indexOf(PREF.get("theme") || "") + 1) % 3]; PREF.set("theme", next); applyTheme(next); };
+applyTheme(PREF.get("theme") || "");
+
+// ---- view hooks
+const baseShow = show;
+show = view => {
+  baseShow(view);
+  if (view === "home") renderHome();
+  if (view === "create") renderRefs();
+  if (view === "library") renderKindChips();
+};
+
+// ---- home
+function greeting() { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; }
+async function renderHome() {
+  $("#greet").textContent = greeting();
+  const o = await DATA.overview().catch(() => null); if (!o) return;
+  const tile = (n, label, go) => `<div class="tile" tabindex="0" role="button" data-go="${go}"><div class="n">${typeof n === "number" ? n.toLocaleString() : n}</div><div class="l">${label}</div></div>`;
+  $("#tiles").innerHTML = tile(o.documents, "documents", "library") + tile(o.links, "connections", "graph")
+    + tile(o.byKind.email || 0, "emails", "library:email") + tile(o.sources.length, "sources", "sources")
+    + tile(o.ai.icon, o.ai.text, "sources");
+  const recent = await DATA.recent(8).catch(() => []);
+  $("#homeRecent").innerHTML = recent.length ? recent.map(d => `<div class="list-item" data-doc="${d.id}"><span>${kindIcon(d.kind)}</span><span class="t grow">${esc(d.title)}</span><span class="small muted" style="flex:none">${ago(d.at)}</span></div>`).join("")
+    : '<div class="empty" style="padding:20px">Nothing yet. <a href="#" data-goto="sources">Add your first folder →</a></div>';
+  $("#homeSources").innerHTML = o.sources.length ? o.sources.map(s => `<div class="list-item" data-goto="sources"><span class="dot ${s.errors ? "warn" : "good"}"></span><span class="t grow">${esc(s.name)}</span><span class="small muted" style="flex:none">${s.documents} docs · synced ${ago(s.at)}${s.errors ? ` · ${s.errors} issue(s)` : ""}</span></div>`).join("")
+    : '<div class="empty" style="padding:20px">No sources connected yet.</div>';
+}
+function homeAsk() { const q = $("#homeAsk").value.trim(); if (!q) return; $("#homeAsk").value = ""; show("ask"); $("#question").value = q; ask(); }
+$("#homeAskBtn").onclick = homeAsk;
+// Rediscover something you'd forgotten: prefer documents that have connections, fall back to any document.
+$("#surpriseBtn").onclick = async () => {
+  const o = await DATA.overview().catch(() => null);
+  if (!o || !o.documents) { toast("Add a folder first, then there's something to rediscover."); show("sources"); return; }
+  let pick = null;
+  for (let i = 0; i < 6 && !pick; i++) {
+    const rows = await api("/documents?limit=1&offset=" + Math.floor(Math.random() * o.documents)).catch(() => []);
+    if (!rows.length) continue;
+    const rel = await api("/documents/" + rows[0].id + "/related").catch(() => []);
+    if (rel.length || i === 5) pick = rows[0];
+  }
+  if (pick) openDoc(pick.id);
+};
+$("#homeAsk").addEventListener("keydown", e => { if (e.key === "Enter") homeAsk(); });
+
+// ---- library type filter
+async function renderKindChips() {
+  const o = await DATA.overview().catch(() => null); if (!o) return;
+  const kinds = Object.entries(o.byKind).sort((a, b) => b[1] - a[1]);
+  let box = $("#libKinds");
+  if (!box) { box = document.createElement("div"); box.id = "libKinds"; box.className = "chips"; box.style.margin = "0 0 12px"; $("#view-library .card").after(box); }
+  box.innerHTML = `<button class="chip ${LIB_KIND ? "" : "on"}" data-kind="">All · ${o.documents}</button>`
+    + kinds.map(([k, n]) => `<button class="chip ${LIB_KIND === k ? "on" : ""}" data-kind="${esc(k)}">${kindIcon(k)} ${esc(KIND_LABEL[k] || k)} · ${n}</button>`).join("");
+}
+
+// ---- create: templates, references, AI / no-AI
+const REFS = new Map(); // doc id -> title
+let createType = "docx";
+const PRESETS = [
+  { label: "Executive brief", type: "docx", topic: "Executive brief: ", instr: "One page for a senior client audience. Lead with the answer, then 3-5 supporting points with evidence, risks, and clear next steps." },
+  { label: "Proposal", type: "docx", topic: "Proposal: ", instr: "Sections: context and objectives, approach and phases, deliverables, timeline, team, commercials (placeholder), why us." },
+  { label: "Meeting summary", type: "docx", topic: "Meeting summary: ", instr: "Attendees, key discussion points, decisions, open questions, and action items with owners and dates." },
+  { label: "Status update", type: "md", topic: "Status update: ", instr: "Overall RAG status, progress since last update, next steps, risks and issues, decisions needed." },
+  { label: "Client deck", type: "deck", topic: "", instr: "Storyline: situation, complication, key insights, recommendation, roadmap, next steps.", slides: 10 },
+  { label: "Board update", type: "deck", topic: "Board update: ", instr: "Board audience. Action titles, one key number per slide, finish with the decisions required.", slides: 6 },
+];
+$("#presets").innerHTML = PRESETS.map((p, i) => `<button class="chip" data-preset="${i}">${p.type === "deck" ? "📊" : "📄"} ${esc(p.label)}</button>`).join("");
+function setCreateType(t) {
+  createType = t;
+  $$("#createType button").forEach(x => x.classList.toggle("on", x.dataset.t === t));
+  $("#slidesRow").style.display = t === "deck" ? "" : "none";
+}
+$$("#createType button").forEach(b => b.onclick = () => setCreateType(b.dataset.t));
+function usePreset(i) {
+  const p = PRESETS[i], topic = $("#cTopic").value;
+  setCreateType(p.type);
+  if (!topic.trim() || PRESETS.some(x => x.topic && topic === x.topic)) $("#cTopic").value = p.topic;
+  $("#cInstr").value = p.instr; if (p.slides) $("#cSlides").value = p.slides;
+  $$("#presets .chip").forEach((c, j) => c.classList.toggle("on", j === i));
+  const t = $("#cTopic"); t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+}
+function renderRefs() {
+  $("#refCount").textContent = REFS.size;
+  const badge = $("#navRefCount"); badge.textContent = REFS.size; badge.hidden = !REFS.size;
+  $("#refChips").innerHTML = REFS.size ? [...REFS].map(([id, t]) => `<span class="chip on" data-doc="${id}" title="Open">${esc(t)}<button class="x" data-unref="${id}" aria-label="Remove ${esc(t)}">✕</button></span>`).join("")
+    : '<span class="small muted">None picked: the brain will choose the most relevant documents for your topic.</span>';
+  $$("#refResults [data-ref]").forEach(b => { b.textContent = REFS.has(+b.dataset.ref) ? "✓ Added" : "+ Add"; });
+  const claude = typeof STATUS !== "undefined" && STATUS && STATUS.claude_configured, aiMode = (typeof STATUS !== "undefined" && STATUS && STATUS.ai && STATUS.ai.mode) || "claude";
+  if (aiMode !== "claude") { $("#aiHint").innerHTML = aiMode === "local" ? `With AI, your local model (${esc(STATUS.ai.label || "local AI")}) writes from your references on this computer: private and free, but slower than Claude. Without AI, a draft is assembled from the most relevant passages.`
+    : aiMode === "claude_app" ? "With AI, the brain prepares a prompt with your references: paste it into Claude, then paste the reply back and your file is built. Without AI, a draft is assembled from the most relevant passages."
+    : "AI is off, so use <b>Build without AI</b>, or <a href='#' data-goto='sources'>choose an AI</a>."; return; }
+  $("#aiHint").innerHTML = claude ? "With AI, Claude writes from your references and cites them. Without AI, a draft is assembled from the most relevant passages. No API call, no cost."
+    : "Claude isn't connected, so <b>Generate with AI</b> will fall back to a draft. <a href='#' data-goto='sources'>Add your key</a> for written documents.";
+}
+function addRef(id, title, quiet) {
+  REFS.set(+id, title); renderRefs();
+  if (!quiet) toast(`Added “${title}” to Create · ${REFS.size} reference${REFS.size > 1 ? "s" : ""}`);
+}
+let refToken = 0;
+async function findRefs(q) {
+  if (!q) return;
+  const token = ++refToken; $("#refResults").innerHTML = '<div class="empty" style="padding:14px"><span class="spinner"></span></div>';
+  const hits = await DATA.search(q, 20).catch(() => []); if (token !== refToken) return;
+  const seen = new Set(), rows = [];
+  for (const h of hits) if (!seen.has(h.doc_id)) { seen.add(h.doc_id); rows.push(h); }
+  $("#refResults").innerHTML = rows.length ? rows.map(h => `<div class="list-item"><span class="t grow" data-doc="${h.doc_id}">${esc(h.title)}</span><span class="small muted" style="flex:none">${esc(h.source)}</span>
+      <button class="btn small ref-add" data-ref="${h.doc_id}" data-ref-title="${esc(h.title)}">${REFS.has(h.doc_id) ? "✓ Added" : "+ Add"}</button></div>`).join("")
+    : '<div class="empty" style="padding:14px">No matching documents.</div>';
+}
+$("#refFind").onclick = () => findRefs($("#refSearch").value.trim());
+$("#refSearch").addEventListener("keydown", e => { if (e.key === "Enter") findRefs($("#refSearch").value.trim()); });
+$("#refSuggest").onclick = () => { const t = $("#cTopic").value.trim(); if (!t) { toast("Type a topic first"); $("#cTopic").focus(); return; } $("#refSearch").value = t; findRefs(t); };
+$("#refClear").onclick = () => { REFS.clear(); renderRefs(); };
+async function runCreate(useAi) {
+  const topic = $("#cTopic").value.trim();
+  if (!topic) { toast("Add a topic first"); $("#cTopic").focus(); return; }
+  const body = { topic, format: createType, slides: +$("#cSlides").value || 8, instructions: $("#cInstr").value.trim(), doc_ids: [...REFS.keys()], use_ai: useAi };
+  const btns = [$("#createAI"), $("#createNoAI")]; btns.forEach(b => b.disabled = true);
+  const mode = (STATUS && STATUS.ai && STATUS.ai.mode) || "claude";
+  $("#createNote").innerHTML = `<span class="spinner"></span> ${!useAi ? "Assembling a draft from your references…" : mode === "local" ? "Your local AI is reading your references and writing… (this can take several minutes on a laptop)"
+    : mode === "claude_app" ? "Preparing the prompt for Claude…" : "Claude is reading your references and writing… (a minute or two)"}`;
+  try {
+    const r = await DATA.create(createType, body);
+    if (r.mode === "handoff") createHandoff(r, createType, body); else createResultCard(r, createType);
+    $("#createNote").textContent = "";
+  } catch (e) { $("#createNote").textContent = "Failed: " + e.message; }
+  btns.forEach(b => b.disabled = false);
+}
+$("#createAI").onclick = () => runCreate(true);
+$("#createNoAI").onclick = () => runCreate(false);
+
+// ---- answer actions (called from ask())
+const ANSWERS = [];
+function answerActions(q, r) {
+  const i = ANSWERS.push({ q, r }) - 1;
+  return `<div class="actions">${r.sources.length ? `<button class="btn small" data-ans-create="${i}">✨ Create from these sources</button>` : ""}
+    <button class="btn small" data-ans-save="${i}">📝 Save to brain</button><button class="btn small" data-ans-copy="${i}">📋 Copy</button></div>`;
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+  const ok = document.execCommand("copy"); ta.remove(); return ok;
+}
+
+// ---- quick find (Ctrl/⌘+K)
+const PAL_PAGES = [["🏠 Home", "home"], ["💬 Ask", "ask"], ["🔎 Search", "search"], ["📚 Library", "library"], ["🕸️ Connections", "graph"], ["✨ Create", "create"], ["🔌 Sources & settings", "sources"]];
+let palItems = [], palSel = 0, palTimer = null, palToken = 0;
+function openPalette() { $("#palette").classList.add("open"); $("#palInput").value = ""; $("#palInput").focus(); palRender(""); }
+function closePalette() { $("#palette").classList.remove("open"); }
+async function palRender(q) {
+  const token = ++palToken, items = [];
+  if (q) {
+    items.push({ label: `💬 Ask: “${q}”`, sub: "question", run: () => { show("ask"); $("#question").value = q; ask(); } });
+    const hits = await DATA.search(q, 10).catch(() => []); if (token !== palToken) return;
+    const seen = new Set();
+    for (const h of hits) if (!seen.has(h.doc_id)) { seen.add(h.doc_id); items.push({ label: "📄 " + h.title, sub: h.source, run: () => openDoc(h.doc_id) }); }
+  }
+  for (const [label, view] of PAL_PAGES) if (!q || label.toLowerCase().includes(q.toLowerCase())) items.push({ label, sub: "page", run: () => show(view) });
+  palItems = items; palSel = 0; drawPalette();
+}
+function drawPalette() {
+  $("#palList").innerHTML = palItems.map((it, i) => `<div class="pal-item ${i === palSel ? "sel" : ""}" role="option" data-pal="${i}"><span class="grow">${esc(it.label)}</span><span class="small muted">${esc(it.sub || "")}</span></div>`).join("")
+    || '<div class="pal-item muted">No matches</div>';
+  $("#palList .sel")?.scrollIntoView({ block: "nearest" });
+}
+$("#palInput").addEventListener("input", e => { clearTimeout(palTimer); palTimer = setTimeout(() => palRender(e.target.value.trim()), 120); });
+$("#palInput").addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { palSel = Math.min(palSel + 1, palItems.length - 1); drawPalette(); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { palSel = Math.max(palSel - 1, 0); drawPalette(); e.preventDefault(); }
+  else if (e.key === "Enter") { const it = palItems[palSel]; if (it) { closePalette(); it.run(); } }
+  else if (e.key === "Escape") closePalette();
+});
+$("#palette").addEventListener("click", e => { const it = e.target.closest("[data-pal]"); if (it) { closePalette(); palItems[+it.dataset.pal].run(); } else if (e.target.id === "palette") closePalette(); });
+$("#findBtn").onclick = openPalette;
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("#palette").classList.contains("open") ? closePalette() : openPalette(); }
+  else if (e.key === "Escape") closePalette();
+  else if ((e.key === "Enter" || e.key === " ") && e.target.classList?.contains("tile")) { e.preventDefault(); e.target.click(); }
+});
+
+// ---- one capture-phase click handler for the new controls (runs before the "open document" handler)
+document.addEventListener("click", async e => {
+  const t = e.target, hit = sel => t.closest(sel);
+  let el;
+  if ((el = hit("[data-ref]"))) { e.stopPropagation(); e.preventDefault(); addRef(el.dataset.ref, el.dataset.refTitle); el.textContent = "✓ Added"; }
+  else if ((el = hit("[data-unref]"))) { e.stopPropagation(); REFS.delete(+el.dataset.unref); renderRefs(); }
+  else if ((el = hit("[data-preset]"))) usePreset(+el.dataset.preset);
+  else if ((el = hit("[data-kind]"))) { LIB_KIND = el.dataset.kind; renderKindChips(); loadLibrary(true); }
+  else if ((el = hit("[data-go]"))) { const [view, kind] = el.dataset.go.split(":"); if (view === "library") LIB_KIND = kind || ""; show(view); }
+  else if ((el = hit("[data-create]"))) { show("create"); setCreateType(el.dataset.create); $("#cTopic").focus(); }
+  else if (hit("[data-remember]")) $("#rememberBtn").click();
+  else if ((el = hit("[data-ans-create]"))) {
+    const { q, r } = ANSWERS[+el.dataset.ansCreate];
+    REFS.clear(); r.sources.forEach(s => REFS.set(+s.doc_id, s.title));
+    show("create"); $("#cTopic").value = q; toast(`${REFS.size} sources added as references`);
+  } else if ((el = hit("[data-ans-save]"))) {
+    const { q, r } = ANSWERS[+el.dataset.ansSave];
+    const text = `Question: ${q}\n\n${r.answer}\n\nSources: ${r.sources.map(s => `[${s.n}] ${s.title}`).join("; ")}`;
+    await DATA.remember(text, "Answer: " + q.slice(0, 70), ["answer"]); el.textContent = "✓ Saved"; el.disabled = true;
+  } else if ((el = hit("[data-ans-copy]"))) {
+    const { r } = ANSWERS[+el.dataset.ansCopy];
+    toast((await copyText(r.answer)) ? "Answer copied" : "Couldn't copy: select the text instead");
+  }
+}, true);
+renderRefs();
+
+
+// ===================== v0.3: follow-up conversation, dates, what's new, collections =====================
+const CHAT = [];  // earlier turns, sent with each question so follow-ups work
+const fmtDate = ts => ts ? new Date(ts * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+$("#newChat").onclick = () => { CHAT.length = 0; $("#chat").innerHTML = ""; $("#question").focus(); toast("New conversation"); };
+
+// ---- what's new (Home)
+async function renderDigest() {
+  const days = +$("#digestDays").value;
+  const d = await DATA.digest(days, false).catch(() => null); if (!d) return;
+  const kinds = Object.entries(d.by_kind).map(([k, n]) => `${n} ${(KIND_LABEL[k] || k).toLowerCase().replace(n === 1 ? /s$/ : /$^/, "")}`).join(", ");
+  $("#digestSummary").textContent = d.count ? `${d.count} new or changed${kinds ? ": " + kinds : ""}` : "Nothing new in this period.";
+  $("#digestList").innerHTML = d.docs.slice(0, 6).map(x => `<div class="list-item" data-doc="${x.id}"><span>${kindIcon(x.kind)}</span><span class="t grow">${esc(x.title)}</span><span class="small muted datepill" style="flex:none">${fmtDate(x.date)}</span></div>`).join("");
+  $("#briefBtn").disabled = !d.count;
+}
+$("#digestDays").onchange = () => { $("#digestBrief").innerHTML = ""; renderDigest(); };
+$("#briefBtn").onclick = async () => {
+  const b = $("#briefBtn"); b.disabled = true; $("#digestBrief").innerHTML = '<div class="brief"><span class="spinner"></span> Reading what\'s new…</div>';
+  try {
+    const d = await DATA.digest(+$("#digestDays").value, true);
+    if (d.mode === "handoff") { $("#digestBrief").innerHTML = '<div class="brief">' + handoffCard(d.handoff, { step: "Paste Claude's briefing below to read it here", placeholder: "Paste Claude's briefing here…", button: "Show briefing",
+      run: async text => { const bySrc = Object.fromEntries(d.sources.map(s => [s.n, s])); $("#digestBrief").innerHTML = `<div class="brief md">${md(text)}</div>`;
+        $$("#digestBrief .cite").forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } }); } }) + "</div>"; return; }
+    if (!d.briefing) { $("#digestBrief").innerHTML = `<div class="brief small" style="color:var(--warn)">${esc(d.error || "No AI is available")}. <a href="#" data-goto="sources">Choose an AI</a> under Sources &amp; settings for a written briefing.</div>`; return; }
+    const bySrc = Object.fromEntries(d.sources.map(s => [s.n, s]));
+    $("#digestBrief").innerHTML = `<div class="brief md">${md(d.briefing)}</div>`;
+    $$("#digestBrief .cite").forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } });
+  } catch (e) { $("#digestBrief").innerHTML = `<div class="brief small" style="color:var(--bad)">${esc(e.message)}</div>`; }
+  finally { b.disabled = false; }
+};
+const homeBase = renderHome;
+renderHome = async () => { await homeBase(); renderDigest(); };
+
+// ---- collections (Create)
+let COLLS = [];
+async function loadCollections() {
+  COLLS = await DATA.collections().catch(() => []);
+  const cur = $("#colSelect").value;
+  $("#colSelect").innerHTML = '<option value="">📁 Load a collection…</option>' + COLLS.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${c.doc_ids.length})</option>`).join("");
+  $("#colSelect").value = COLLS.some(c => c.name === cur) ? cur : "";
+  $("#colDelete").hidden = !$("#colSelect").value;
+}
+$("#colSelect").onchange = () => {
+  const c = COLLS.find(x => x.name === $("#colSelect").value); $("#colDelete").hidden = !c; if (!c) return;
+  REFS.clear(); c.doc_ids.forEach((id, i) => REFS.set(+id, c.titles[i])); renderRefs(); toast(`Loaded “${c.name}”: ${REFS.size} references`);
+};
+$("#colSave").onclick = async () => {
+  if (!REFS.size) { toast("Pick some reference documents first"); return; }
+  const name = prompt("Name this collection (e.g. a client or project):", $("#colSelect").value || "");
+  if (!name || !name.trim()) return;
+  try { await DATA.saveCollection(name.trim(), [...REFS.keys()]); await loadCollections(); $("#colSelect").value = name.trim(); $("#colDelete").hidden = false; toast(`Saved collection “${name.trim()}”`); }
+  catch (e) { toast(e.message); }
+};
+$("#colDelete").onclick = async () => {
+  const name = $("#colSelect").value; if (!name || !confirm(`Delete collection “${name}”? The documents themselves are kept.`)) return;
+  await DATA.deleteCollection(name); await loadCollections(); toast("Collection deleted");
+};
+const createShowBase = show;
+show = view => { createShowBase(view); if (view === "create") loadCollections(); };
+
+
+Object.assign(DATA, {  // v0.4: AI settings live on the server (secrets.env)
+  aiSettings: () => api("/settings/ai"),
+  setAi: b => api("/settings/ai", b),
+  localModels: (provider, url) => api(`/settings/ai/models?provider=${encodeURIComponent(provider)}&url=${encodeURIComponent(url)}`),
+  testAi: () => api("/settings/ai/test", {}),
+  pullStatus: () => api("/settings/ai/pull"),
+  pullModel: (url, model) => api("/settings/ai/pull", { url, model }),
+  fromReply: (topic, text, format, sources) => api("/create/from-reply", { topic, text, format, sources }),
+  connectDesktop: () => api("/settings/claude-desktop", {}),
+});
+
+// ===================== v0.4: choose the AI (Claude API, local AI, Claude app, off) =====================
+const LOCAL_URLS = { ollama: "http://localhost:11434", openai: "http://localhost:1234/v1" };
+let AI = { mode: "claude", label: "Claude" };
+function aiStatus(st) {
+  const a = (st && st.ai) || { mode: "claude" };
+  if (a.mode === "local") return { ok: true, icon: "💻", text: a.label || "Local AI" };
+  if (a.mode === "claude_app") return { ok: true, icon: "💬", text: "Claude app (copy & paste)" };
+  if (a.mode === "off") return { ok: false, icon: "⏸", text: "AI off" };
+  return st && st.claude_configured ? { ok: true, icon: "✓", text: "Claude connected" } : { ok: false, icon: "–", text: "Claude not connected" };
+}
+function aiPanels() {
+  const m = ($$("#aiModes input").find(i => i.checked) || {}).value || "claude";
+  $("#aiClaude").hidden = m !== "claude"; $("#aiLocal").hidden = m !== "local"; $("#aiApp").hidden = m !== "claude_app";
+  $$("#aiModes .ai-mode").forEach(l => l.classList.toggle("on", l.querySelector("input").checked));
+  $("#localUrl").placeholder = LOCAL_URLS[$("#localProvider").value];
+  $("#pullRow").hidden = $("#localProvider").value !== "ollama";
+  return m;
+}
+async function loadAi() {
+  try { AI = await DATA.aiSettings(); } catch (e) { return; }
+  $$("#aiModes input").forEach(i => { i.checked = i.value === AI.mode; });
+  $("#localProvider").value = AI.local_provider || "ollama"; $("#localUrl").value = AI.local_url || "";
+  if (AI.local_model && !$$("#localModel option").some(o => o.value === AI.local_model))
+    $("#localModel").insertAdjacentHTML("beforeend", `<option>${esc(AI.local_model)}</option>`);
+  $("#localModel").value = AI.local_model || "";
+  aiPanels();
+  if (AI.mode === "local") loadModels();
+  if ($("#desktopState") && AI.claude_desktop) $("#desktopState").innerHTML = AI.claude_desktop.connected
+    ? '<span class="dot good"></span>Claude Desktop is connected. In Claude, ask e.g. “Search my second brain for Acme pricing and draft a brief”.'
+    : AI.claude_desktop.app_found ? "Let the Claude desktop app search your brain and save documents directly."
+    : "Claude Desktop doesn't seem to be installed yet (claude.ai/download). You can still connect it now.";
+}
+async function saveAi() {
+  const body = { mode: aiPanels(), local_provider: $("#localProvider").value, local_url: $("#localUrl").value.trim(), local_model: $("#localModel").value };
+  try { AI = { ...AI, ...(await DATA.setAi(body)) }; await refreshStatus(); renderRefs(); toast("AI: " + aiStatus(STATUS).text); }
+  catch (e) { toast(e.message, 6000); }
+}
+let localToken = 0;  // the latest action (find models / test) owns the status line
+async function loadModels() {
+  const token = ++localToken;
+  $("#localState").innerHTML = '<span class="spinner"></span> Looking for installed models…';
+  const r = await DATA.localModels($("#localProvider").value, $("#localUrl").value.trim()).catch(e => ({ models: [], error: e.message }));
+  if (token !== localToken) return;
+  const cur = $("#localModel").value || AI.local_model || "";
+  $("#localModel").innerHTML = '<option value="">Automatic (first installed model)</option>' + r.models.map(m => `<option>${esc(m)}</option>`).join("");
+  if (cur && r.models.includes(cur)) $("#localModel").value = cur;
+  $("#localState").innerHTML = r.error ? `<span class="dot warn"></span>${esc(r.error)}`
+    : r.models.length ? `<span class="dot good"></span>Connected: ${r.models.length} model${r.models.length > 1 ? "s" : ""} installed.`
+    : '<span class="dot warn"></span>Connected, but no models are installed yet (see the set-up steps below).';
+}
+$("#aiModes").addEventListener("change", saveAi);
+$("#localProvider").onchange = () => { $("#localUrl").value = ""; aiPanels(); loadModels(); saveAi(); };
+$("#localUrl").onchange = () => { loadModels(); saveAi(); };
+$("#localModel").onchange = saveAi;
+$("#localRefresh").onclick = loadModels;
+$("#localTest").onclick = async () => {
+  const b = $("#localTest"); b.disabled = true; await saveAi();
+  const token = ++localToken;
+  $("#localState").innerHTML = '<span class="spinner"></span> Asking your local model (the first answer can take a minute while it loads)…';
+  const r = await DATA.testAi().catch(e => ({ ok: false, error: e.message }));
+  if (token === localToken) $("#localState").innerHTML = r.ok ? `<span class="dot good"></span>It works: ${esc(r.label)} replied “${esc(r.reply)}”.` : `<span class="dot warn"></span>${esc(r.error)}`;
+  b.disabled = false;
+};
+async function watchPull() {  // poll the background download until it finishes
+  const b = $("#pullGo"); b.disabled = true;
+  for (;;) {
+    const s = await DATA.pullStatus().catch(e => ({ state: "error", error: e.message }));
+    const token = ++localToken;
+    if (s.state === "running") {
+      $("#localState").innerHTML = `<span class="spinner"></span> Downloading ${esc(s.model)}: ${s.percent || 0}% (${esc(s.status || "")})`;
+      await new Promise(r => setTimeout(r, 1500));
+      continue;
+    }
+    if (s.state === "done") {
+      await loadModels();
+      if ([...$("#localModel").options].some(o => o.value === s.model)) { $("#localModel").value = s.model; saveAi(); }
+      $("#localState").innerHTML = `<span class="dot good"></span>Downloaded ${esc(s.model)} and selected it. Press Test to try it.`;
+    } else if (s.state === "error") $("#localState").innerHTML = `<span class="dot warn"></span>${esc(s.error)}`;
+    break;
+  }
+  b.disabled = false;
+}
+$("#pullGo").onclick = async () => {
+  try { await DATA.pullModel($("#localUrl").value.trim(), $("#pullName").value); watchPull(); }
+  catch (e) { toast(e.message, 6000); }
+};
+if ($("#desktopConnect")) $("#desktopConnect").onclick = async () => {
+  try { const r = await DATA.connectDesktop(); toast("Connected. Quit and reopen Claude Desktop to use your brain there.", 8000); AI.claude_desktop = r; loadAi(); }
+  catch (e) { toast(e.message, 8000); }
+};
+const aiShowBase = show;
+show = view => { aiShowBase(view); if (view === "sources") loadAi(); };
+
+// ---- Claude-app hand-off: copy the prepared prompt, paste Claude's reply back
+const HANDOFFS = [];
+function handoffCard(prompt, reply) {
+  const i = HANDOFFS.push({ prompt, reply }) - 1;
+  return `<div class="handoff"><div><b>💬 Ready for Claude</b> <span class="small muted">· your instructions and sources are in the prompt</span></div>
+    <ol class="small ho-steps"><li><b>Copy</b> the prompt</li><li>Paste it into Claude (claude.ai or the Claude app) and send it</li>${reply ? `<li>${reply.step}</li>` : ""}</ol>
+    <div class="row"><button class="btn small primary" data-ho-copy="${i}">📋 Copy prompt</button><a class="btn small" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude ↗</a>
+      <details class="small"><summary>Show the prompt (${Math.max(1, Math.round(prompt.length / 1000))}k characters)</summary><pre class="ho-pre">${esc(prompt)}</pre></details></div>
+    ${reply ? `<textarea id="hoReply${i}" rows="5" placeholder="${esc(reply.placeholder)}" aria-label="Claude's reply"></textarea>
+      <div class="row" style="margin-top:8px"><button class="btn small primary" data-ho-build="${i}">${esc(reply.button)}</button><span class="small muted" id="hoNote${i}"></span></div>` : ""}</div>`;
+}
+document.addEventListener("click", async e => {
+  const c = e.target.closest("[data-ho-copy]"), b = e.target.closest("[data-ho-build]");
+  if (c) toast((await copyText(HANDOFFS[+c.dataset.hoCopy].prompt)) ? "Prompt copied: paste it into Claude" : "Couldn't copy: open “Show the prompt” and copy it");
+  if (b) {
+    const i = b.dataset.hoBuild, text = $("#hoReply" + i).value.trim();
+    if (!text) { toast("Paste Claude's reply first"); $("#hoReply" + i).focus(); return; }
+    const note = $("#hoNote" + i); b.disabled = true; note.innerHTML = '<span class="spinner"></span>';
+    try { await HANDOFFS[+i].reply.run(text); note.textContent = ""; }  // the card may be gone by now: that's fine
+    catch (err) { note.textContent = err.message; }
+    b.disabled = false;
+  }
+});
+function renderAnswer(bot, q, r) {
+  const bySrc = Object.fromEntries(r.sources.map(s => [s.n, s]));
+  bot.innerHTML = (r.mode === "local" ? `<p class="small muted" style="margin-top:0">💻 Written by ${esc(r.ai || "local AI")} on this computer</p>` : "")
+    + (r.mode === "claude_app" ? '<p class="small muted" style="margin-top:0">💬 Written in the Claude app</p>' : "")
+    + `<div class="md">${md(r.answer)}</div>`
+    + (r.sources.length ? `<div class="sources">${r.sources.map(s => `<span class="srcchip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div>` : "");
+  $$(".cite", bot).forEach(c => { const s = bySrc[c.dataset.n]; if (s) { c.dataset.doc = s.doc_id; c.title = s.title; } });
+  bot.insertAdjacentHTML("beforeend", answerActions(q, r));
+}
+function handoffAnswer(bot, q, r) {
+  bot.innerHTML = handoffCard(r.handoff, { step: "Paste Claude's answer below to keep it in this conversation", placeholder: "Paste Claude's answer here…", button: "Show answer",
+    run: async text => { const a = { answer: text, sources: r.sources, mode: "claude_app" }; CHAT.push({ q, a: text }); renderAnswer(bot, q, a); } })
+    + (r.sources.length ? `<div class="sources">${r.sources.map(s => `<span class="srcchip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div>` : "");
+}
+function createResultCard(r, type) {
+  const name = DATA.fileName(r);
+  const how = r.mode === "claude" ? "✨ Written by Claude" : r.mode === "local" ? `💻 Written by ${esc(r.ai || "local AI")}` : r.mode === "claude_app" ? "💬 Written in the Claude app"
+    : r.mode === "no_ai" ? "📄 Built without AI" : "⚠️ AI unavailable: draft built without AI";
+  $("#createResults").insertAdjacentHTML("afterbegin", `<div class="card"><div class="row" style="justify-content:space-between"><div><b>${type === "deck" ? "📊" : "📄"} ${esc(name)}</b>
+      <div class="small muted">${how} · ${r.sources.length} source${r.sources.length === 1 ? "" : "s"} · kept in your Library</div></div>
+      <a class="btn primary" href="${DATA.downloadUrl(r)}" download="${esc(name)}">Download</a></div>
+      <div class="chips" style="margin-top:10px">${r.sources.map(s => `<span class="chip" data-doc="${s.doc_id}">[${s.n}] ${esc(s.title)}</span>`).join("")}</div></div>`);
+}
+function createHandoff(r, type, body) {
+  const deck = type === "deck", fmt = deck ? "pptx" : body.format;
+  const card = document.createElement("div"); card.className = "card";
+  card.innerHTML = `<div class="small muted" style="margin-bottom:8px"><b>${deck ? "📊" : "📄"} ${esc(body.topic)}</b> · ${r.sources.length} source${r.sources.length === 1 ? "" : "s"}</div>`
+    + handoffCard(r.handoff, { step: `Paste Claude's reply below and press <b>Build ${deck ? "the deck" : "the document"}</b>`, placeholder: deck ? "Paste Claude's deck outline here (# Title, ## Slide titles, - bullets, Notes: …)" : "Paste Claude's document here…",
+      button: deck ? "📊 Build the deck" : fmt === "docx" ? "📄 Build the Word document" : "📄 Save the document",
+      run: async text => { const made = await DATA.fromReply(body.topic, text, fmt, r.sources); card.remove(); createResultCard(made, type); toast("Built from Claude's reply and kept in your Library"); refreshStatus(); } });
+  $("#createResults").prepend(card);
+}
+
+// ---------- boot ----------
+refreshStatus().then(() => show(store.get("brainView") || "home"));
+</script>
+</body>
+</html>
